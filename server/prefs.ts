@@ -15,7 +15,7 @@ export type Preferences = {
   repoTags: Record<string, string[]>
 }
 
-const CONFIG_DIR = join(homedir(), ".config", "dashboard")
+const CONFIG_DIR = join(homedir(), ".config", "orbit")
 const CONFIG_PATH = join(CONFIG_DIR, "config.json")
 
 const defaultPreferences = (): Preferences => ({
@@ -26,7 +26,7 @@ const defaultPreferences = (): Preferences => ({
 })
 
 /**
- * Reads preferences from ~/.config/dashboard/config.json.
+ * Reads preferences from ~/.config/orbit/config.json.
  */
 export async function readPreferences(): Promise<Preferences> {
   try {

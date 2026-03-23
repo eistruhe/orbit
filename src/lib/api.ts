@@ -42,7 +42,7 @@ export async function fetchPreferences(): Promise<Preferences> {
 }
 
 /**
- * Saves preferences to ~/.config/dashboard/config.json via the API.
+ * Saves preferences to ~/.config/orbit/config.json via the API.
  */
 export async function savePreferences(prefs: Preferences): Promise<Preferences> {
   const res = await fetch("/api/preferences", {
@@ -72,10 +72,10 @@ export async function runScan(scanRoot?: string): Promise<ScanResponse> {
   return data
 }
 
-export type OpenTarget = "finder" | "cursor"
+export type OpenTarget = "finder" | "cursor" | "github" | "browser"
 
 /**
- * Opens a repo folder in Finder or Cursor via the local API (macOS).
+ * Opens a repo in local desktop tools via the local API (macOS).
  */
 export async function openRepoPath(
   path: string,

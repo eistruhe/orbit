@@ -1,7 +1,7 @@
-import { DashboardApp } from "@/components/dashboard/dashboard-app"
+import { OrbitApp } from "@/components/orbit/orbit-app"
 
 function App() {
-  return <DashboardApp />
+  return <OrbitApp />
 }
 
 export default App

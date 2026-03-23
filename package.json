@@ -1,13 +1,19 @@
 {
-  "name": "dashboard",
+  "name": "orbit",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron/main.mjs",
   "scripts": {
     "dev": "concurrently -k \"bun run ./server/index.ts\" \"vite\" --names api,web",
     "dev:api": "bun run ./server/index.ts",
     "dev:web": "vite",
     "build": "tsc -b && vite build",
+    "build:runtime": "node ./scripts/prepare-runtime.mjs",
+    "build:desktop": "bun run build && bun run build:runtime",
+    "electron:prod": "bun run build:desktop && electron ./electron/main.mjs",
+    "dist:desktop": "bun run build:desktop && electron-builder",
+    "dist:desktop:dir": "bun run build:desktop && electron-builder --dir",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -27,6 +33,7 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@electron/notarize": "^3.1.1",
     "@eslint/js": "^9.39.4",
     "@fontsource-variable/geist-mono": "^5.2.7",
     "@fontsource-variable/inter": "^5.2.8",
@@ -35,6 +42,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "electron": "^41.0.3",
+    "electron-builder": "^26.8.1",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
@@ -44,5 +53,57 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.1",
     "vite": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.orbit.desktop",
+    "productName": "Orbit",
+    "asar": true,
+    "files": [
+      "dist/index.html",
+      "dist/assets/**/*",
+      "dist/*.svg",
+      "dist/*.png",
+      "dist/*.ico",
+      "dist/*.webp",
+      "!dist/mac*",
+      "!dist/win*",
+      "!dist/linux*",
+      "!dist/*.dmg",
+      "!dist/*.zip",
+      "!dist/*.blockmap",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/runtime",
+        "to": "runtime"
+      }
+    ],
+    "afterSign": "./scripts/notarize.mjs",
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "electron/icons/orbit-iOS-Default-1024x1024@1x.png",
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "entitlements": "electron/entitlements.mac.plist",
+      "entitlementsInherit": "electron/entitlements.mac.plist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development"
+    }
   }
 }

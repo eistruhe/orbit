@@ -5,7 +5,7 @@ import { defineConfig } from "vite"
 
 /** Must match server; default avoids 8787 (often Wrangler). */
 const API_PORT = (() => {
-  const n = Number(process.env.DASHBOARD_API_PORT)
+  const n = Number(process.env.ORBIT_API_PORT)
   return Number.isFinite(n) && n > 0 ? n : 8788
 })()
 

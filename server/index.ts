@@ -13,18 +13,18 @@ import { scanRepos } from "./scan.ts"
 
 /** Default avoids 8787 — commonly used by Wrangler and other local dev servers. */
 const PORT = (() => {
-  const n = Number(process.env.DASHBOARD_API_PORT)
+  const n = Number(process.env.ORBIT_API_PORT)
   return Number.isFinite(n) && n > 0 ? n : 8788
 })()
 
 function defaultScanRoot(): string {
-  return process.env.DASHBOARD_SCAN_ROOT ?? join(homedir(), "Sites")
+  return process.env.ORBIT_SCAN_ROOT ?? join(homedir(), "Sites")
 }
 
 const app = new Hono()
 
 app.get("/api/health", (c) =>
-  c.json({ ok: true, service: "dashboard-api" }),
+  c.json({ ok: true, service: "orbit-api" }),
 )
 
 app.get("/api/preferences", async (c) => {
@@ -124,8 +124,19 @@ app.post("/api/open", async (c) => {
   if (typeof pathStr !== "string" || pathStr.length === 0) {
     return c.json({ error: "Missing path" }, 400)
   }
-  if (target !== "finder" && target !== "cursor") {
-    return c.json({ error: "target must be \"finder\" or \"cursor\"" }, 400)
+  if (
+    target !== "finder" &&
+    target !== "cursor" &&
+    target !== "github" &&
+    target !== "browser"
+  ) {
+    return c.json(
+      {
+        error:
+          "target must be one of: \"finder\", \"cursor\", \"github\", \"browser\"",
+      },
+      400,
+    )
   }
 
   const prefs = await readPreferences()
@@ -145,7 +156,7 @@ app.post("/api/open", async (c) => {
   })
 })
 
-console.log(`dashboard API listening on http://127.0.0.1:${PORT}`)
+console.log(`orbit API listening on http://127.0.0.1:${PORT}`)
 
 export default {
   port: PORT,
