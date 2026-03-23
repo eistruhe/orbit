@@ -125,19 +125,15 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
-    border-radius: 0 !important;
+    @apply border-border outline-ring/50 rounded-none;
   }
   body {
     @apply text-foreground;
     font-family: "Geist Mono Variable", ui-monospace, monospace;
-    -webkit-font-smoothing: auto;
-    -moz-osx-font-smoothing: auto;
-    background:
-      radial-gradient(circle, var(--dot-color) 1px, transparent 1px) 0 0 / 16px 16px,
-      var(--background);
+    background: radial-gradient(circle, var(--dot-color) 1px, transparent 1px) 0 0 / 16px 16px, var(--background);
   }
   html {
     font-family: "Geist Mono Variable", ui-monospace, monospace;
+    overscroll-behavior: none;
   }
 }

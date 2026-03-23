@@ -51,7 +51,7 @@ export function ProjectFilters({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Search projects..."
-          className="h-10 border-border bg-background pl-9 text-sm uppercase"
+          className="h-10 border-border bg-background! pl-9 text-sm uppercase"
         />
       </div>
 

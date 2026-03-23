@@ -40,10 +40,7 @@ export function SidebarPanel({
       <div className="flex items-center gap-2 border-b border-border px-4 py-4">
         <Folder className="size-4" aria-hidden />
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wider">dashboard</p>
-          <p className="text-[10px] text-muted-foreground uppercase">
-            local git
-          </p>
+          <p className="text-sm font-semibold uppercase tracking-wider">Dashboard</p>
         </div>
       </div>
 

@@ -369,7 +369,7 @@ export function DashboardApp() {
         />
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border px-6 py-6">
+          <header className="sticky top-0 z-20 flex flex-wrap items-start justify-between gap-4 border-b border-border px-6 py-3 bg-sidebar/30 dark:bg-sidebar/70 backdrop-blur-lg">
             <div>
               <h1 className="text-2xl font-semibold uppercase tracking-wider">
                 Project dashboard

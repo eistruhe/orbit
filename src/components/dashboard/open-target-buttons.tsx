@@ -1,5 +1,3 @@
-import { Code2, FolderOpen, Globe } from "lucide-react"
-
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -16,6 +14,33 @@ type OpenTargetButtonsProps = {
   onOpenRemote?: (remoteUrl: string) => void
   className?: string
   size?: "default" | "compact"
+}
+
+function AppIcon({
+  src,
+  alt,
+  compact,
+  /** Map asset to near-black in light mode and near-white in dark (for SVG logos). */
+  themeMono = false,
+}: {
+  src: string
+  alt: string
+  compact: boolean
+  themeMono?: boolean
+}) {
+  return (
+    <img
+      src={src}
+      alt={alt}
+      aria-hidden={alt === ""}
+      className={cn(
+        "object-contain",
+        compact ? "size-3" : "size-3.5",
+        themeMono && "brightness-0 dark:invert",
+      )}
+      draggable={false}
+    />
+  )
 }
 
 /**
@@ -52,9 +77,11 @@ export function OpenTargetButtons({
               aria-label="Open in Finder"
               onClick={() => onOpenExternal(path, "finder")}
             >
-              <FolderOpen
-                className={cn("size-3.5", compact && "size-3")}
-                aria-hidden
+              <AppIcon
+                src="/finder.svg"
+                alt=""
+                compact={compact}
+                themeMono
               />
             </Button>
           }
@@ -74,9 +101,11 @@ export function OpenTargetButtons({
               aria-label="Open in Cursor"
               onClick={() => onOpenExternal(path, "cursor")}
             >
-              <Code2
-                className={cn("size-3.5", compact && "size-3")}
-                aria-hidden
+              <AppIcon
+                src="/cursor.svg"
+                alt=""
+                compact={compact}
+                themeMono
               />
             </Button>
           }
@@ -97,9 +126,11 @@ export function OpenTargetButtons({
                 aria-label="Open remote in browser"
                 onClick={() => onOpenRemote(remoteUrl)}
               >
-                <Globe
-                  className={cn("size-3.5", compact && "size-3")}
-                  aria-hidden
+                <AppIcon
+                  src="/github.svg"
+                  alt=""
+                  compact={compact}
+                  themeMono
                 />
               </Button>
             }
