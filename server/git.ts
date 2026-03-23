@@ -7,9 +7,14 @@ export type GitMeta = {
   topLevel: string | null
   branch: string | null
   lastCommitHash: string | null
+  lastCommitShortHash: string | null
+  lastCommitAuthor: string | null
   lastCommitMessage: string | null
   lastCommitIso: string | null
   lastCommitEpoch: number | null
+  upstreamBranch: string | null
+  aheadCount: number | null
+  behindCount: number | null
   isDirty: boolean
   remoteUrl: string | null
   error?: string
@@ -34,9 +39,14 @@ export async function getGitMeta(repoPath: string): Promise<GitMeta> {
     topLevel: null,
     branch: null,
     lastCommitHash: null,
+    lastCommitShortHash: null,
+    lastCommitAuthor: null,
     lastCommitMessage: null,
     lastCommitIso: null,
     lastCommitEpoch: null,
+    upstreamBranch: null,
+    aheadCount: null,
+    behindCount: null,
     isDirty: false,
     remoteUrl: null,
   }
@@ -54,22 +64,26 @@ export async function getGitMeta(repoPath: string): Promise<GitMeta> {
     const logOut = await runGit(repoPath, [
       "log",
       "-1",
-      "--format=%H%x1f%s%x1f%aI%x1f%ct",
+      "--format=%H%x1f%s%x1f%aI%x1f%ct%x1f%an",
     ])
     const logLine = logOut.stdout.trim()
     let lastCommitHash: string | null = null
+    let lastCommitShortHash: string | null = null
+    let lastCommitAuthor: string | null = null
     let lastCommitMessage: string | null = null
     let lastCommitIso: string | null = null
     let lastCommitEpoch: number | null = null
     if (logLine) {
       const parts = logLine.split("\x1f")
       lastCommitHash = parts[0] ?? null
+      lastCommitShortHash = lastCommitHash ? lastCommitHash.slice(0, 7) : null
       lastCommitMessage = parts[1] ?? null
       lastCommitIso = parts[2] ?? null
       if (parts[3]) {
         const n = Number(parts[3])
         lastCommitEpoch = Number.isFinite(n) ? n : null
       }
+      lastCommitAuthor = parts[4] ?? null
     }
 
     const st = await runGit(repoPath, ["status", "--porcelain"])
@@ -83,13 +97,49 @@ export async function getGitMeta(repoPath: string): Promise<GitMeta> {
       remoteUrl = null
     }
 
+    let upstreamBranch: string | null = null
+    let aheadCount: number | null = null
+    let behindCount: number | null = null
+    try {
+      const upstreamOut = await runGit(repoPath, [
+        "rev-parse",
+        "--abbrev-ref",
+        "--symbolic-full-name",
+        "@{upstream}",
+      ])
+      upstreamBranch = upstreamOut.stdout.trim() || null
+      if (upstreamBranch) {
+        const countsOut = await runGit(repoPath, [
+          "rev-list",
+          "--left-right",
+          "--count",
+          `${upstreamBranch}...HEAD`,
+        ])
+        const raw = countsOut.stdout.trim()
+        const [behindRaw, aheadRaw] = raw.split(/\s+/)
+        const behind = Number(behindRaw)
+        const ahead = Number(aheadRaw)
+        behindCount = Number.isFinite(behind) ? behind : null
+        aheadCount = Number.isFinite(ahead) ? ahead : null
+      }
+    } catch {
+      upstreamBranch = null
+      aheadCount = null
+      behindCount = null
+    }
+
     return {
       topLevel: topLevel ?? repoPath,
       branch,
       lastCommitHash,
+      lastCommitShortHash,
+      lastCommitAuthor,
       lastCommitMessage,
       lastCommitIso,
       lastCommitEpoch,
+      upstreamBranch,
+      aheadCount,
+      behindCount,
       isDirty,
       remoteUrl,
     }

@@ -1,8 +1,9 @@
-import { FileDiff, Loader2, Pin } from "lucide-react"
+import { FileDiff, Loader2, Pencil, Pin } from "lucide-react"
 
 import { OpenTargetButtons } from "@/components/dashboard/open-target-buttons"
 import { StatusBadge } from "@/components/dashboard/status-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { formatBytes } from "@/lib/format-size"
 import { formatRelativeFromIso } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import type { OpenTarget } from "@/lib/api"
@@ -16,6 +17,27 @@ type QuickResumeProps = {
   onTogglePin: (path: string) => void
   onOpen: (path: string) => void
   onOpenExternal: (path: string, target: OpenTarget) => void
+  onOpenRemote: (remoteUrl: string | null) => void
+  repoNotes: Record<string, string>
+  repoTags: Record<string, string[]>
+  onEditMetadata: (path: string) => void
+}
+
+function syncLabel(repo: RepoRecord): string | null {
+  if (repo.aheadCount == null || repo.behindCount == null) return null
+  if (repo.aheadCount === 0 && repo.behindCount === 0) return "Synced"
+  return `↑${repo.aheadCount} ↓${repo.behindCount}`
+}
+
+function diskLabel(repo: RepoRecord): string | null {
+  const repoSize = formatBytes(repo.workingTreeBytes)
+  const nodeModulesSize = formatBytes(repo.nodeModulesBytes)
+  if (!repoSize && !nodeModulesSize) return null
+  if (repoSize && nodeModulesSize) {
+    return `repo ${repoSize} · node_modules ${nodeModulesSize}`
+  }
+  if (repoSize) return `repo ${repoSize}`
+  return `node_modules ${nodeModulesSize}`
 }
 
 /**
@@ -28,6 +50,10 @@ export function QuickResume({
   onTogglePin,
   onOpen,
   onOpenExternal,
+  onOpenRemote,
+  repoNotes,
+  repoTags,
+  onEditMetadata,
 }: QuickResumeProps) {
   const showLoadingPlaceholder = scanLoading && repos.length === 0
   const showEmpty = !scanLoading && repos.length === 0
@@ -62,7 +88,7 @@ export function QuickResume({
         </div>
       ) : null}
       {showEmpty ? (
-        <div className="flex min-h-40 flex-col items-center justify-center gap-2 border border-dashed border-border bg-muted/20 px-6 py-10 text-center">
+        <div className="flex min-h-40 flex-col items-center justify-center gap-2 border border-dashed border-border bg-muted px-6 py-10 text-center">
           <p className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
             No projects yet
           </p>
@@ -74,16 +100,14 @@ export function QuickResume({
         </div>
       ) : null}
       {!showLoadingPlaceholder && !showEmpty ? (
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         {repos.map((repo) => (
           <Card
             key={repo.path}
             size="sm"
             className={cn(
-              "cursor-pointer transition hover:bg-muted/50",
-              repo.isDirty &&
-                !repo.error &&
-                "border-l-4 border-l-highlight bg-highlight/[0.07]",
+              "cursor-pointer gap-2 py-2 transition hover:bg-muted",
+              repo.isDirty && !repo.error && "border-l-4 border-l-highlight",
             )}
             role="button"
             tabIndex={0}
@@ -100,18 +124,20 @@ export function QuickResume({
                 : undefined
             }
           >
-            <CardHeader className="gap-2 border-b border-border/60 pb-3">
+            <CardHeader className="gap-1 border-b border-border/60 px-2.5 pb-2!">
               <div className="flex items-start justify-between gap-2">
-                <CardTitle className="truncate text-sm">{repo.name}</CardTitle>
+                <CardTitle className="truncate text-sm leading-tight">
+                  {repo.name}
+                </CardTitle>
                 <StatusBadge repo={repo} />
               </div>
               {repo.isDirty && !repo.error ? (
                 <div
-                  className="flex items-center gap-2 border border-highlight/50 bg-highlight/15 px-2 py-2 text-[10px] font-semibold uppercase tracking-wider text-foreground"
+                  className="flex items-center gap-1.5 border border-highlight/60 bg-muted/40 px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-foreground"
                   role="status"
                 >
                   <FileDiff
-                    className="size-4 shrink-0 text-highlight"
+                    className="size-3 shrink-0 text-highlight"
                     aria-hidden
                   />
                   Uncommitted changes
@@ -120,7 +146,7 @@ export function QuickResume({
               <button
                 type="button"
                 className={cn(
-                  "inline-flex w-fit items-center gap-1 border border-transparent px-1 py-0.5 text-[10px] text-muted-foreground hover:border-border",
+                  "inline-flex w-fit items-center gap-0.5 border border-transparent px-0.5 py-0 text-[10px] text-muted-foreground hover:border-border",
                 )}
                 onClick={(e) => {
                   e.stopPropagation()
@@ -138,19 +164,59 @@ export function QuickResume({
                 />
                 {pinnedPaths.has(repo.path) ? "Pinned" : "Pin"}
               </button>
+              <button
+                type="button"
+                className={cn(
+                  "inline-flex w-fit items-center gap-0.5 border border-transparent px-0.5 py-0 text-[10px] text-muted-foreground hover:border-border",
+                )}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onEditMetadata(repo.path)
+                }}
+              >
+                <Pencil className="size-3" aria-hidden />
+                Meta
+              </button>
             </CardHeader>
-            <CardContent className="space-y-2 pt-0">
-              <p className="line-clamp-2 text-xs text-muted-foreground">
+            <CardContent className="space-y-1 px-2.5 pt-0">
+              <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
                 {repo.lastCommitMessage ?? repo.error ?? "No commit"}
               </p>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-muted-foreground">
-                <span>{formatRelativeFromIso(repo.lastCommitIso)}</span>
-                {repo.stack.length > 0 && (
-                  <span className="truncate">{repo.stack.slice(0, 3).join(" · ")}</span>
-                )}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0 text-[10px] text-muted-foreground">
+                {repo.branch ? <span>{repo.branch}</span> : null}
+                {repo.lastCommitShortHash ? (
+                  <span>{repo.lastCommitShortHash}</span>
+                ) : null}
+                {repo.lastCommitAuthor ? (
+                  <span className="truncate">by {repo.lastCommitAuthor}</span>
+                ) : null}
               </div>
+              {repoTags[repo.path]?.length ? (
+                <div className="line-clamp-1 text-[10px] text-muted-foreground">
+                  #{repoTags[repo.path].join(" #")}
+                </div>
+              ) : null}
+              {repoNotes[repo.path] ? (
+                <p className="line-clamp-1 text-[10px] italic text-muted-foreground">
+                  {repoNotes[repo.path]}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0 text-[10px] text-muted-foreground">
+                <span>{formatRelativeFromIso(repo.lastCommitIso)}</span>
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-0">
+                  {syncLabel(repo) ? <span>{syncLabel(repo)}</span> : null}
+                  {repo.stack.length > 0 && (
+                    <span className="truncate">{repo.stack.slice(0, 3).join(" · ")}</span>
+                  )}
+                </div>
+              </div>
+              {diskLabel(repo) ? (
+                <p className="line-clamp-1 text-[10px] text-muted-foreground">
+                  {diskLabel(repo)}
+                </p>
+              ) : null}
               <div
-                className="border-t border-border/60 pt-2"
+                className="border-t border-border/60 pt-1"
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
               >
@@ -161,6 +227,9 @@ export function QuickResume({
                   <OpenTargetButtons
                     path={repo.path}
                     onOpenExternal={onOpenExternal}
+                    remoteUrl={repo.remoteUrl}
+                    onOpenRemote={() => onOpenRemote(repo.remoteUrl)}
+                    size="compact"
                   />
                 </div>
               </div>

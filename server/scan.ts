@@ -1,8 +1,12 @@
+import { execFile } from "node:child_process"
 import { readdir, stat } from "node:fs/promises"
 import { join } from "node:path"
+import { promisify } from "node:util"
 
 import { getGitMeta } from "./git.ts"
 import { detectStack } from "./stack.ts"
+
+const execFileAsync = promisify(execFile)
 
 export type RepoRecord = {
   id: string
@@ -11,9 +15,17 @@ export type RepoRecord = {
   topLevelPath: string
   branch: string | null
   lastCommitHash: string | null
+  lastCommitShortHash: string | null
+  lastCommitAuthor: string | null
   lastCommitMessage: string | null
   lastCommitIso: string | null
   lastCommitEpoch: number | null
+  upstreamBranch: string | null
+  aheadCount: number | null
+  behindCount: number | null
+  workingTreeBytes: number | null
+  nodeModulesBytes: number | null
+  lastFsMtimeIso: string | null
   isDirty: boolean
   remoteUrl: string | null
   stack: string[]
@@ -37,6 +49,53 @@ const SKIP_DIR_NAMES = new Set([
 
 const MAX_DEPTH = 8
 const GIT_CONCURRENCY = 10
+// Keep disk metrics bounded so slow filesystems do not block scans.
+const DU_TIMEOUT_MS = 900
+
+async function getDirectorySizeBytes(path: string): Promise<number | null> {
+  try {
+    const out = await execFileAsync("du", ["-sk", path], {
+      timeout: DU_TIMEOUT_MS,
+      maxBuffer: 256 * 1024,
+      env: process.env,
+    })
+    const first = out.stdout.trim().split(/\s+/)[0]
+    const kb = Number(first)
+    if (!Number.isFinite(kb)) return null
+    return kb * 1024
+  } catch {
+    return null
+  }
+}
+
+async function getRepoDiskMetrics(topLevelPath: string): Promise<{
+  workingTreeBytes: number | null
+  nodeModulesBytes: number | null
+  lastFsMtimeIso: string | null
+}> {
+  let lastFsMtimeIso: string | null = null
+  try {
+    const st = await stat(topLevelPath)
+    lastFsMtimeIso = st.mtime.toISOString()
+  } catch {
+    lastFsMtimeIso = null
+  }
+
+  const workingTreeBytes = await getDirectorySizeBytes(topLevelPath)
+
+  let nodeModulesBytes: number | null = null
+  try {
+    const nodeModulesPath = join(topLevelPath, "node_modules")
+    const st = await stat(nodeModulesPath)
+    if (st.isDirectory()) {
+      nodeModulesBytes = await getDirectorySizeBytes(nodeModulesPath)
+    }
+  } catch {
+    nodeModulesBytes = null
+  }
+
+  return { workingTreeBytes, nodeModulesBytes, lastFsMtimeIso }
+}
 
 async function collectGitRoots(
   dir: string,
@@ -128,6 +187,7 @@ export async function scanRepos(scanRoot: string): Promise<RepoRecord[]> {
     const git = await getGitMeta(repoPath)
     const stack = git.error ? [] : await detectStack(git.topLevel ?? repoPath)
     const top = git.topLevel ?? repoPath
+    const disk = await getRepoDiskMetrics(top)
     const name = top.split(/[/\\]/).filter(Boolean).pop() ?? top
 
     const record: RepoRecord = {
@@ -137,9 +197,17 @@ export async function scanRepos(scanRoot: string): Promise<RepoRecord[]> {
       topLevelPath: top,
       branch: git.branch,
       lastCommitHash: git.lastCommitHash,
+      lastCommitShortHash: git.lastCommitShortHash,
+      lastCommitAuthor: git.lastCommitAuthor,
       lastCommitMessage: git.lastCommitMessage,
       lastCommitIso: git.lastCommitIso,
       lastCommitEpoch: git.lastCommitEpoch,
+      upstreamBranch: git.upstreamBranch,
+      aheadCount: git.aheadCount,
+      behindCount: git.behindCount,
+      workingTreeBytes: disk.workingTreeBytes,
+      nodeModulesBytes: disk.nodeModulesBytes,
+      lastFsMtimeIso: disk.lastFsMtimeIso,
       isDirty: git.isDirty,
       remoteUrl: git.remoteUrl,
       stack,

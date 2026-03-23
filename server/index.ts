@@ -38,6 +38,22 @@ app.put("/api/preferences", async (c) => {
     return c.json({ error: "Invalid JSON body" }, 400)
   }
   const current = await readPreferences()
+  const noteEntries =
+    body.repoNotes && typeof body.repoNotes === "object"
+      ? Object.entries(body.repoNotes).filter(
+          (entry): entry is [string, string] =>
+            typeof entry[0] === "string" && typeof entry[1] === "string",
+        )
+      : null
+  const tagEntries =
+    body.repoTags && typeof body.repoTags === "object"
+      ? Object.entries(body.repoTags).map(([path, tags]) => [
+          path,
+          Array.isArray(tags)
+            ? tags.filter((tag): tag is string => typeof tag === "string")
+            : [],
+        ])
+      : null
   const next = {
     ...current,
     pinnedPaths: Array.isArray(body.pinnedPaths)
@@ -56,6 +72,8 @@ app.put("/api/preferences", async (c) => {
       typeof body.scanRoot === "string" && body.scanRoot.length > 0
         ? body.scanRoot
         : current.scanRoot,
+    repoNotes: noteEntries ? Object.fromEntries(noteEntries) : current.repoNotes,
+    repoTags: tagEntries ? Object.fromEntries(tagEntries) : current.repoTags,
   }
   await writePreferences(next)
   return c.json(next)

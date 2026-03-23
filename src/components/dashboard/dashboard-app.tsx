@@ -20,6 +20,7 @@ import {
   runScan,
   savePreferences,
 } from "@/lib/api"
+import { toBrowserRemoteUrl } from "@/lib/remote-url"
 import type { Preferences, RepoRecord } from "@/types/repo"
 
 const WEEK_SEC = 7 * 24 * 60 * 60
@@ -39,11 +40,17 @@ function matchesFilters(
   status: StatusFilter,
   stack: string,
   projectType: ProjectTypeFilter,
+  tag: string,
+  repoNotes: Record<string, string>,
+  repoTags: Record<string, string[]>,
 ): boolean {
+  const tags = repoTags[repo.path] ?? []
+  const note = repoNotes[repo.path] ?? ""
   const q = query.trim().toLowerCase()
   if (q) {
-    const hay = `${repo.name} ${repo.path} ${repo.lastCommitMessage ?? ""} ${repo.branch ?? ""}`
-      .toLowerCase()
+    const hay =
+      `${repo.name} ${repo.path} ${repo.lastCommitMessage ?? ""} ${repo.branch ?? ""} ${note} ${tags.join(" ")}`
+        .toLowerCase()
     if (!hay.includes(q)) return false
   }
   if (ownership === "remote" && !repo.remoteUrl) return false
@@ -56,6 +63,8 @@ function matchesFilters(
   if (stack !== "all" && !repo.stack.includes(stack)) return false
 
   if (projectType === "web" && !isWebApp(repo)) return false
+
+  if (tag !== "all" && !tags.includes(tag)) return false
 
   return true
 }
@@ -76,6 +85,7 @@ export function DashboardApp() {
   const [status, setStatus] = useState<StatusFilter>("all")
   const [stack, setStack] = useState("all")
   const [projectType, setProjectType] = useState<ProjectTypeFilter>("all")
+  const [tag, setTag] = useState("all")
 
   const [actionFeedback, setActionFeedback] = useState<string | null>(null)
 
@@ -129,12 +139,33 @@ export function DashboardApp() {
     return [...s].sort((a, b) => a.localeCompare(b))
   }, [repos])
 
+  const repoNotes = useMemo(() => prefs?.repoNotes ?? {}, [prefs?.repoNotes])
+  const repoTags = useMemo(() => prefs?.repoTags ?? {}, [prefs?.repoTags])
+
+  const tagOptions = useMemo(() => {
+    const s = new Set<string>()
+    Object.values(repoTags).forEach((tagsForRepo) => {
+      tagsForRepo.forEach((tagValue) => s.add(tagValue))
+    })
+    return [...s].sort((a, b) => a.localeCompare(b))
+  }, [repoTags])
+
   const filtered = useMemo(
     () =>
       repos.filter((r) =>
-        matchesFilters(r, query, ownership, status, stack, projectType),
+        matchesFilters(
+          r,
+          query,
+          ownership,
+          status,
+          stack,
+          projectType,
+          tag,
+          repoNotes,
+          repoTags,
+        ),
       ),
-    [repos, query, ownership, status, stack, projectType],
+    [repos, query, ownership, status, stack, projectType, tag, repoNotes, repoTags],
   )
 
   const quickResume = useMemo(() => {
@@ -246,6 +277,67 @@ export function DashboardApp() {
     [],
   )
 
+  const openRemote = useCallback((remoteUrl: string | null) => {
+    const browserUrl = toBrowserRemoteUrl(remoteUrl)
+    if (!browserUrl) {
+      setActionFeedback("Remote URL is missing or unsupported")
+      return
+    }
+    window.open(browserUrl, "_blank", "noopener,noreferrer")
+    setActionFeedback("Opened remote in browser")
+  }, [])
+
+  const editRepoMetadata = useCallback(
+    async (path: string) => {
+      if (!prefs) return
+      const safeRepoTags = prefs.repoTags ?? {}
+      const safeRepoNotes = prefs.repoNotes ?? {}
+      const currentTags = safeRepoTags[path]?.join(", ") ?? ""
+      const tagsInput = window.prompt("Tags (comma-separated)", currentTags)
+      if (tagsInput == null) return
+      const currentNote = safeRepoNotes[path] ?? ""
+      const noteInput = window.prompt("Note (optional)", currentNote)
+      if (noteInput == null) return
+
+      const nextTags = [...new Set(
+        tagsInput
+          .split(",")
+          .map((tagValue) => tagValue.trim())
+          .filter(Boolean),
+      )]
+
+      const nextRepoTags = { ...safeRepoTags }
+      if (nextTags.length > 0) {
+        nextRepoTags[path] = nextTags
+      } else {
+        delete nextRepoTags[path]
+      }
+
+      const nextRepoNotes = { ...safeRepoNotes }
+      const nextNote = noteInput.trim()
+      if (nextNote) {
+        nextRepoNotes[path] = nextNote
+      } else {
+        delete nextRepoNotes[path]
+      }
+
+      try {
+        const next = await savePreferences({
+          ...prefs,
+          repoTags: nextRepoTags,
+          repoNotes: nextRepoNotes,
+        })
+        setPrefs(next)
+        setActionFeedback("Saved metadata")
+      } catch (e) {
+        setActionFeedback(
+          e instanceof Error ? e.message : "Could not save metadata",
+        )
+      }
+    },
+    [prefs],
+  )
+
   if (!prefs) {
     return (
       <div className="flex min-h-svh items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -325,6 +417,10 @@ export function DashboardApp() {
               onTogglePin={(p) => void togglePin(p)}
               onOpen={(p) => void recordOpen(p)}
               onOpenExternal={(path, target) => void openExternal(path, target)}
+              onOpenRemote={openRemote}
+              repoNotes={repoNotes}
+              repoTags={repoTags}
+              onEditMetadata={(path) => void editRepoMetadata(path)}
             />
 
             <Separator />
@@ -341,6 +437,9 @@ export function DashboardApp() {
               onStackChange={setStack}
               projectType={projectType}
               onProjectTypeChange={setProjectType}
+              tag={tag}
+              tagOptions={tagOptions}
+              onTagChange={setTag}
             />
 
             <ProjectTable
@@ -348,6 +447,11 @@ export function DashboardApp() {
               pinnedPaths={pinnedPathsSet}
               onTogglePin={(p) => void togglePin(p)}
               onOpen={(p) => void recordOpen(p)}
+              onOpenExternal={(path, target) => void openExternal(path, target)}
+              onOpenRemote={openRemote}
+              repoNotes={repoNotes}
+              repoTags={repoTags}
+              onEditMetadata={(path) => void editRepoMetadata(path)}
             />
           </div>
         </main>

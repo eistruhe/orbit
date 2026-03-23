@@ -11,6 +11,8 @@ export type Preferences = {
   pinnedPaths: string[]
   recent: RecentEntry[]
   scanRoot?: string
+  repoNotes: Record<string, string>
+  repoTags: Record<string, string[]>
 }
 
 const CONFIG_DIR = join(homedir(), ".config", "dashboard")
@@ -19,6 +21,8 @@ const CONFIG_PATH = join(CONFIG_DIR, "config.json")
 const defaultPreferences = (): Preferences => ({
   pinnedPaths: [],
   recent: [],
+  repoNotes: {},
+  repoTags: {},
 })
 
 /**
@@ -33,6 +37,26 @@ export async function readPreferences(): Promise<Preferences> {
       ...parsed,
       pinnedPaths: Array.isArray(parsed.pinnedPaths) ? parsed.pinnedPaths : [],
       recent: Array.isArray(parsed.recent) ? parsed.recent : [],
+      repoNotes:
+        parsed.repoNotes && typeof parsed.repoNotes === "object"
+          ? Object.fromEntries(
+              Object.entries(parsed.repoNotes).filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[0] === "string" && typeof entry[1] === "string",
+              ),
+            )
+          : {},
+      repoTags:
+        parsed.repoTags && typeof parsed.repoTags === "object"
+          ? Object.fromEntries(
+              Object.entries(parsed.repoTags).map(([path, tags]) => [
+                path,
+                Array.isArray(tags)
+                  ? tags.filter((tag): tag is string => typeof tag === "string")
+                  : [],
+              ]),
+            )
+          : {},
     }
   } catch {
     return defaultPreferences()

@@ -19,6 +19,9 @@ type ProjectFiltersProps = {
   onStackChange: (v: string) => void
   projectType: ProjectTypeFilter
   onProjectTypeChange: (v: ProjectTypeFilter) => void
+  tag: string
+  tagOptions: string[]
+  onTagChange: (v: string) => void
 }
 
 /**
@@ -36,6 +39,9 @@ export function ProjectFilters({
   onStackChange,
   projectType,
   onProjectTypeChange,
+  tag,
+  tagOptions,
+  onTagChange,
 }: ProjectFiltersProps) {
   return (
     <div className="space-y-4">
@@ -87,6 +93,15 @@ export function ProjectFilters({
           options={[
             { value: "all", label: "All" },
             { value: "web", label: "Web app" },
+          ]}
+        />
+        <FilterTabs
+          label="Tags"
+          value={tag}
+          onValueChange={onTagChange}
+          options={[
+            { value: "all", label: "All" },
+            ...tagOptions.map((t) => ({ value: t, label: t })),
           ]}
         />
       </div>

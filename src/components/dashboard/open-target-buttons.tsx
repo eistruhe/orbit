@@ -1,4 +1,4 @@
-import { Code2, FolderOpen } from "lucide-react"
+import { Code2, FolderOpen, Globe } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -12,6 +12,8 @@ import type { OpenTarget } from "@/lib/api"
 type OpenTargetButtonsProps = {
   path: string
   onOpenExternal: (path: string, target: OpenTarget) => void
+  remoteUrl?: string | null
+  onOpenRemote?: (remoteUrl: string) => void
   className?: string
   size?: "default" | "compact"
 }
@@ -23,6 +25,8 @@ type OpenTargetButtonsProps = {
 export function OpenTargetButtons({
   path,
   onOpenExternal,
+  remoteUrl,
+  onOpenRemote,
   className,
   size = "default",
 }: OpenTargetButtonsProps) {
@@ -81,6 +85,30 @@ export function OpenTargetButtons({
           Open in Cursor
         </TooltipContent>
       </Tooltip>
+      {remoteUrl && onOpenRemote ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                size={compact ? "icon-xs" : "icon-sm"}
+                className={cn(compact && "size-6")}
+                aria-label="Open remote in browser"
+                onClick={() => onOpenRemote(remoteUrl)}
+              >
+                <Globe
+                  className={cn("size-3.5", compact && "size-3")}
+                  aria-hidden
+                />
+              </Button>
+            }
+          />
+          <TooltipContent side="bottom" className="text-xs">
+            Open remote
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
     </div>
   )
 }
