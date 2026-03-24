@@ -1,4 +1,5 @@
 import { Folder, Pin } from "lucide-react"
+import { memo } from "react"
 
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -27,7 +28,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 /**
  * Left navigation: pinned, recent, and smart group counts.
  */
-export function SidebarPanel({
+export const SidebarPanel = memo(function SidebarPanel({
   pinned,
   recent,
   activeThisWeek,
@@ -37,7 +38,7 @@ export function SidebarPanel({
 }: SidebarPanelProps) {
   return (
     <aside className="sticky top-0 z-20 flex h-svh w-60 shrink-0 flex-col overflow-y-auto border-r border-border bg-sidebar text-sidebar-foreground">
-      <div className="app-drag h-14 border-b border-border" aria-hidden />
+      <div className="app-drag h-12 border-b border-border" aria-hidden />
 
       <nav className="flex flex-1 flex-col gap-4 overflow-hidden p-3">
         <button
@@ -129,4 +130,4 @@ export function SidebarPanel({
       </nav>
     </aside>
   )
-}
+})

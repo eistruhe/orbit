@@ -1,4 +1,5 @@
 import { FileDiff, Loader2, Pencil, Pin } from "lucide-react"
+import { memo } from "react"
 
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { StatusBadge } from "@/components/orbit/status-badge"
@@ -43,7 +44,7 @@ function diskLabel(repo: RepoRecord): string | null {
 /**
  * Grid of the most recently active repositories (quick glance).
  */
-export function QuickResume({
+export const QuickResume = memo(function QuickResume({
   repos,
   scanLoading,
   pinnedPaths,
@@ -107,7 +108,6 @@ export function QuickResume({
             size="sm"
             className={cn(
               "cursor-pointer gap-2 py-2 transition hover:bg-muted",
-              repo.isDirty && !repo.error && "border-l-4 border-l-highlight",
             )}
             role="button"
             tabIndex={0}
@@ -131,54 +131,58 @@ export function QuickResume({
                 </CardTitle>
                 <StatusBadge repo={repo} />
               </div>
-              {repo.isDirty && !repo.error ? (
-                <div
-                  className="flex items-center gap-1.5 border border-highlight/60 bg-muted/40 px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-foreground"
-                  role="status"
-                >
-                  <FileDiff
-                    className="size-3 shrink-0 text-highlight"
-                    aria-hidden
-                  />
-                  Uncommitted changes
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className={cn(
+                      "inline-flex w-fit items-center gap-1 border border-transparent px-0 py-0 h-5 text-[10px] text-muted-foreground hover:text-black dark:hover:text-white cursor-pointer",
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onTogglePin(repo.path)
+                    }}
+                  >
+                    <Pin
+                      className={cn(
+                        "size-2.5",
+                        pinnedPaths.has(repo.path)
+                          ? "text-highlight"
+                          : "",
+                      )}
+                      aria-hidden
+                    />
+                    {pinnedPaths.has(repo.path) ? "Pinned" : "Pin"}
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      "inline-flex w-fit items-center gap-1 border border-transparent px-0 py-0 h-5 text-[10px] text-muted-foreground hover:text-black dark:hover:text-white cursor-pointer",
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onEditMetadata(repo.path)
+                    }}
+                  >
+                    <Pencil className="size-2.5" aria-hidden />
+                    Meta
+                  </button>
                 </div>
-              ) : null}
-              <button
-                type="button"
-                className={cn(
-                  "inline-flex w-fit items-center gap-0.5 border border-transparent px-0.5 py-0 text-[10px] text-muted-foreground hover:border-border",
-                )}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onTogglePin(repo.path)
-                }}
-              >
-                <Pin
-                  className={cn(
-                    "size-3",
-                    pinnedPaths.has(repo.path)
-                      ? "text-highlight"
-                      : "text-muted-foreground",
-                  )}
-                  aria-hidden
-                />
-                {pinnedPaths.has(repo.path) ? "Pinned" : "Pin"}
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  "inline-flex w-fit items-center gap-0.5 border border-transparent px-0.5 py-0 text-[10px] text-muted-foreground hover:border-border",
-                )}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onEditMetadata(repo.path)
-                }}
-              >
-                <Pencil className="size-3" aria-hidden />
-                Meta
-              </button>
+                {repo.isDirty && !repo.error ? (
+                  <div
+                    className="flex items-center gap-1.5 border border-highlight/60 bg-muted/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground h-5"
+                    role="status"
+                  >
+                    <FileDiff
+                      className="size-3 shrink-0 text-highlight"
+                      aria-hidden
+                    />
+                    Uncommitted changes
+                  </div>
+                ) : null}
+              </div>
             </CardHeader>
-            <CardContent className="space-y-1 px-2.5 pt-0">
+            <CardContent className="flex flex-col gap-y-1 px-2.5 pt-0 h-full">
               <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
                 {repo.lastCommitMessage ?? repo.error ?? "No commit"}
               </p>
@@ -191,6 +195,21 @@ export function QuickResume({
                   <span className="truncate">by {repo.lastCommitAuthor}</span>
                 ) : null}
               </div>
+              <div className="text-[10px] text-muted-foreground">
+                <span>{formatRelativeFromIso(repo.lastCommitIso)}</span>
+                {syncLabel(repo) ? <span>{' · '} {syncLabel(repo)}</span> : null}
+              </div>
+              <div className="h-px w-full bg-border/60 my-1"></div>
+              {repo.stack.length > 0 && (
+                <p className="truncate text-[10px] text-muted-foreground">
+                  {repo.stack.slice(0, 3).join(" · ")}
+                </p>
+              )}
+              {diskLabel(repo) ? (
+                <p className="line-clamp-1 text-[10px] text-muted-foreground">
+                  {diskLabel(repo)}
+                </p>
+              ) : null}
               {repoTags[repo.path]?.length ? (
                 <div className="line-clamp-1 text-[10px] text-muted-foreground">
                   #{repoTags[repo.path].join(" #")}
@@ -201,29 +220,12 @@ export function QuickResume({
                   {repoNotes[repo.path]}
                 </p>
               ) : null}
-              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0 text-[10px] text-muted-foreground">
-                <span>{formatRelativeFromIso(repo.lastCommitIso)}</span>
-                <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-0">
-                  {syncLabel(repo) ? <span>{syncLabel(repo)}</span> : null}
-                  {repo.stack.length > 0 && (
-                    <span className="truncate">{repo.stack.slice(0, 3).join(" · ")}</span>
-                  )}
-                </div>
-              </div>
-              {diskLabel(repo) ? (
-                <p className="line-clamp-1 text-[10px] text-muted-foreground">
-                  {diskLabel(repo)}
-                </p>
-              ) : null}
               <div
-                className="border-t border-border/60 pt-1"
+                className="mt-auto"
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] tracking-widest text-muted-foreground uppercase">
-                    Open
-                  </span>
+                <div className="flex justify-end border-t border-border/60 mt-1 pt-2">
                   <OpenTargetButtons
                     path={repo.path}
                     onOpenExternal={onOpenExternal}
@@ -240,4 +242,4 @@ export function QuickResume({
       ) : null}
     </section>
   )
-}
+})

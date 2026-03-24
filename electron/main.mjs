@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url"
 
 import { app, BrowserWindow, dialog, shell } from "electron"
 
-const API_PORT = Number(process.env.ORBIT_API_PORT) || 8788
+/** Leave 8788 for `bun run dev`; Electron uses a dedicated default. */
+const API_PORT = Number(process.env.ORBIT_API_PORT) || 38488
 const UI_PORT = Number(process.env.ORBIT_UI_PORT) || 4173
 const API_BASE_URL = `http://127.0.0.1:${API_PORT}`
 const UI_BASE_URL = `http://127.0.0.1:${UI_PORT}`

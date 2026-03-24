@@ -156,7 +156,7 @@ export function OpenTargetButtons({
           }
         />
         <TooltipContent side="bottom" className="text-xs">
-          Open in Browser ({`<repo>.test`})
+          Open in Browser ({`${path.replace('/Users/andreschwarzer/Sites/', "")}.test`})
         </TooltipContent>
       </Tooltip>
       {remoteUrl && onOpenRemote ? (
@@ -168,7 +168,7 @@ export function OpenTargetButtons({
                 variant="outline"
                 size={compact ? "icon-xs" : "icon-sm"}
                 className={cn(compact && "size-6")}
-                aria-label="Open remote in browser"
+                aria-label="Open in GitHub"
                 onClick={() => onOpenRemote(remoteUrl)}
               >
                 <AppIcon
@@ -181,7 +181,7 @@ export function OpenTargetButtons({
             }
           />
           <TooltipContent side="bottom" className="text-xs">
-            Open remote
+            Open in GitHub.com
           </TooltipContent>
         </Tooltip>
       ) : null}

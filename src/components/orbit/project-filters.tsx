@@ -1,4 +1,5 @@
 import { Search } from "lucide-react"
+import { memo } from "react"
 
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -27,7 +28,7 @@ type ProjectFiltersProps = {
 /**
  * Search field and compact filter tabs for the project table.
  */
-export function ProjectFilters({
+export const ProjectFilters = memo(function ProjectFilters({
   query,
   onQueryChange,
   ownership,
@@ -107,7 +108,7 @@ export function ProjectFilters({
       </div>
     </div>
   )
-}
+})
 
 function FilterTabs({
   label,

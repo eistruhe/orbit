@@ -1,6 +1,7 @@
 import { Loader2, RefreshCw } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+import { MetadataDialog } from "@/components/orbit/metadata-dialog"
 import { SidebarPanel } from "@/components/orbit/sidebar-panel"
 import { ProjectFilters } from "@/components/orbit/project-filters"
 import type {
@@ -11,7 +12,6 @@ import type {
 import { ProjectTable } from "@/components/orbit/project-table"
 import { QuickResume } from "@/components/orbit/quick-resume"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import {
@@ -90,8 +90,6 @@ export function OrbitApp() {
 
   const [actionFeedback, setActionFeedback] = useState<string | null>(null)
   const [metaDialogPath, setMetaDialogPath] = useState<string | null>(null)
-  const [metaTagsInput, setMetaTagsInput] = useState("")
-  const [metaNoteInput, setMetaNoteInput] = useState("")
   const [metaSaving, setMetaSaving] = useState(false)
 
   useEffect(() => {
@@ -298,72 +296,66 @@ export function OrbitApp() {
     setActionFeedback("Opened remote in browser")
   }, [])
 
-  const openMetadataDialog = useCallback(
-    (path: string) => {
-      if (!prefs) return
-      const safeRepoTags = prefs.repoTags ?? {}
-      const safeRepoNotes = prefs.repoNotes ?? {}
-      setMetaDialogPath(path)
-      setMetaTagsInput(safeRepoTags[path]?.join(", ") ?? "")
-      setMetaNoteInput(safeRepoNotes[path] ?? "")
-    },
-    [prefs],
-  )
+  const openMetadataDialog = useCallback((path: string) => {
+    if (!prefs) return
+    setMetaDialogPath(path)
+  }, [prefs])
 
   const closeMetadataDialog = useCallback(() => {
     if (metaSaving) return
     setMetaDialogPath(null)
-    setMetaTagsInput("")
-    setMetaNoteInput("")
   }, [metaSaving])
 
-  const saveMetadata = useCallback(async () => {
-    if (!prefs || !metaDialogPath || metaSaving) return
+  const saveMetadata = useCallback(
+    async (tagsInput: string, noteInput: string) => {
+      if (!prefs || !metaDialogPath || metaSaving) return
 
-    const safeRepoTags = prefs.repoTags ?? {}
-    const safeRepoNotes = prefs.repoNotes ?? {}
-    const nextTags = [
-      ...new Set(
-        metaTagsInput
-          .split(",")
-          .map((tagValue) => tagValue.trim())
-          .filter(Boolean),
-      ),
-    ]
+      const safeRepoTags = prefs.repoTags ?? {}
+      const safeRepoNotes = prefs.repoNotes ?? {}
+      const nextTags = [
+        ...new Set(
+          tagsInput
+            .split(",")
+            .map((tagValue) => tagValue.trim())
+            .filter(Boolean),
+        ),
+      ]
 
-    const nextRepoTags = { ...safeRepoTags }
-    if (nextTags.length > 0) {
-      nextRepoTags[metaDialogPath] = nextTags
-    } else {
-      delete nextRepoTags[metaDialogPath]
-    }
+      const nextRepoTags = { ...safeRepoTags }
+      if (nextTags.length > 0) {
+        nextRepoTags[metaDialogPath] = nextTags
+      } else {
+        delete nextRepoTags[metaDialogPath]
+      }
 
-    const nextRepoNotes = { ...safeRepoNotes }
-    const nextNote = metaNoteInput.trim()
-    if (nextNote) {
-      nextRepoNotes[metaDialogPath] = nextNote
-    } else {
-      delete nextRepoNotes[metaDialogPath]
-    }
+      const nextRepoNotes = { ...safeRepoNotes }
+      const nextNote = noteInput.trim()
+      if (nextNote) {
+        nextRepoNotes[metaDialogPath] = nextNote
+      } else {
+        delete nextRepoNotes[metaDialogPath]
+      }
 
-    try {
-      setMetaSaving(true)
-      const next = await savePreferences({
-        ...prefs,
-        repoTags: nextRepoTags,
-        repoNotes: nextRepoNotes,
-      })
-      setPrefs(next)
-      setActionFeedback("Saved metadata")
-      closeMetadataDialog()
-    } catch (e) {
-      setActionFeedback(
-        e instanceof Error ? e.message : "Could not save metadata",
-      )
-    } finally {
-      setMetaSaving(false)
-    }
-  }, [prefs, metaDialogPath, metaSaving, metaTagsInput, metaNoteInput, closeMetadataDialog])
+      try {
+        setMetaSaving(true)
+        const next = await savePreferences({
+          ...prefs,
+          repoTags: nextRepoTags,
+          repoNotes: nextRepoNotes,
+        })
+        setPrefs(next)
+        setActionFeedback("Saved metadata")
+        closeMetadataDialog()
+      } catch (e) {
+        setActionFeedback(
+          e instanceof Error ? e.message : "Could not save metadata",
+        )
+      } finally {
+        setMetaSaving(false)
+      }
+    },
+    [prefs, metaDialogPath, metaSaving, closeMetadataDialog],
+  )
 
   if (!prefs) {
     return (
@@ -392,7 +384,7 @@ export function OrbitApp() {
           activeThisWeek={activeThisWeek}
           stalled={stalled}
           onPick={recordOpen}
-          onOpenExternal={(path, target) => void openExternal(path, target)}
+          onOpenExternal={openExternal}
         />
 
         <main className="flex min-w-0 flex-1 flex-col">
@@ -441,9 +433,9 @@ export function OrbitApp() {
               repos={quickResume}
               scanLoading={loading}
               pinnedPaths={pinnedPathsSet}
-              onTogglePin={(p) => void togglePin(p)}
-              onOpen={(p) => void recordOpen(p)}
-              onOpenExternal={(path, target) => void openExternal(path, target)}
+              onTogglePin={togglePin}
+              onOpen={recordOpen}
+              onOpenExternal={openExternal}
               onOpenRemote={openRemote}
               repoNotes={repoNotes}
               repoTags={repoTags}
@@ -472,9 +464,9 @@ export function OrbitApp() {
             <ProjectTable
               repos={filtered}
               pinnedPaths={pinnedPathsSet}
-              onTogglePin={(p) => void togglePin(p)}
-              onOpen={(p) => void recordOpen(p)}
-              onOpenExternal={(path, target) => void openExternal(path, target)}
+              onTogglePin={togglePin}
+              onOpen={recordOpen}
+              onOpenExternal={openExternal}
               onOpenRemote={openRemote}
               repoNotes={repoNotes}
               repoTags={repoTags}
@@ -484,73 +476,15 @@ export function OrbitApp() {
         </main>
       </div>
       {metaDialogPath ? (
-        <div className="app-no-drag fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button
-            type="button"
-            className="absolute inset-0 bg-background/70"
-            onClick={closeMetadataDialog}
-            aria-label="Close metadata dialog"
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            className="relative z-10 w-full max-w-md border border-border bg-card p-4 text-card-foreground shadow-lg"
-          >
-            <div className="mb-3 space-y-1 border-b border-border pb-3">
-              <h3 className="text-sm font-semibold uppercase tracking-wider">
-                Edit metadata
-              </h3>
-              <p className="line-clamp-1 text-[11px] text-muted-foreground">
-                {repoByPath.get(metaDialogPath)?.name ?? metaDialogPath}
-              </p>
-            </div>
-            <form
-              className="space-y-3"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void saveMetadata()
-              }}
-            >
-              <div className="space-y-1">
-                <label className="text-[10px] tracking-widest text-muted-foreground uppercase">
-                  Tags (comma-separated)
-                </label>
-                <Input
-                  value={metaTagsInput}
-                  onChange={(event) => setMetaTagsInput(event.target.value)}
-                  placeholder="client, urgent, backend"
-                  autoFocus
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] tracking-widest text-muted-foreground uppercase">
-                  Note
-                </label>
-                <textarea
-                  value={metaNoteInput}
-                  onChange={(event) => setMetaNoteInput(event.target.value)}
-                  rows={4}
-                  className="min-h-24 w-full border border-input bg-transparent px-2.5 py-1 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-                  placeholder="Optional project note..."
-                />
-              </div>
-              <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={closeMetadataDialog}
-                  disabled={metaSaving}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" size="sm" disabled={metaSaving}>
-                  {metaSaving ? "Saving..." : "Save metadata"}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <MetadataDialog
+          path={metaDialogPath}
+          repoName={repoByPath.get(metaDialogPath)?.name ?? metaDialogPath}
+          initialTags={prefs.repoTags?.[metaDialogPath]?.join(", ") ?? ""}
+          initialNote={prefs.repoNotes?.[metaDialogPath] ?? ""}
+          saving={metaSaving}
+          onClose={closeMetadataDialog}
+          onSave={saveMetadata}
+        />
       ) : null}
     </TooltipProvider>
   )

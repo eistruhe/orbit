@@ -1,4 +1,5 @@
 import { Pencil, Pin } from "lucide-react"
+import { memo } from "react"
 
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { StatusBadge } from "@/components/orbit/status-badge"
@@ -54,7 +55,7 @@ function diskLabel(repo: RepoRecord): string | null {
 /**
  * Full project listing with status and last activity.
  */
-export function ProjectTable({
+export const ProjectTable = memo(function ProjectTable({
   repos,
   pinnedPaths,
   onTogglePin,
@@ -198,4 +199,4 @@ export function ProjectTable({
       ) : null}
     </div>
   )
-}
+})

@@ -93,5 +93,5 @@ Run on a machine/profile with no pre-existing app config:
 5. Open remote link button for a repo with `origin`.
 6. Add tags and note through **Meta**, then restart app and confirm persistence.
 7. Verify preferences file exists at `~/.config/orbit/config.json`.
-8. Confirm no startup crash when ports `8788` and `4173` are free.
+8. Confirm no startup crash when ports `38488` (API) and `4173` (UI) are free.
 9. Confirm clear startup error dialog if one of those ports is occupied.
