@@ -21,6 +21,37 @@ function defaultScanRoot(): string {
   return process.env.ORBIT_SCAN_ROOT ?? join(homedir(), "Sites")
 }
 
+type BranchGroups = {
+  local: string[]
+  remote: string[]
+}
+
+async function listRepoBranches(repoPath: string): Promise<BranchGroups> {
+  const localResult = await execFileAsync(
+    "git",
+    ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+    { cwd: repoPath, env: process.env, maxBuffer: 1024 * 1024 },
+  )
+  const remoteResult = await execFileAsync(
+    "git",
+    ["for-each-ref", "--format=%(refname:short)", "refs/remotes"],
+    { cwd: repoPath, env: process.env, maxBuffer: 1024 * 1024 },
+  )
+
+  const local = localResult.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b))
+  const remote = remoteResult.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b))
+
+  return { local, remote }
+}
+
 const app = new Hono()
 
 app.get("/api/health", (c) =>
@@ -154,6 +185,31 @@ app.post("/api/open", async (c) => {
     status: 200,
     headers: { "Content-Type": "application/json; charset=utf-8" },
   })
+})
+
+app.get("/api/repo/branches", async (c) => {
+  const pathStr = c.req.query("path")
+  if (!pathStr) {
+    return c.json({ error: "Missing path" }, 400)
+  }
+
+  const prefs = await readPreferences()
+  const scanRoot = prefs.scanRoot ?? defaultScanRoot()
+  let safePath: string
+  try {
+    safePath = await resolvePathUnderRoot(pathStr, scanRoot)
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return c.json({ error: message }, 400)
+  }
+
+  try {
+    const branches = await listRepoBranches(safePath)
+    return c.json(branches)
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return c.json({ error: message }, 500)
+  }
 })
 
 console.log(`orbit API listening on http://127.0.0.1:${PORT}`)

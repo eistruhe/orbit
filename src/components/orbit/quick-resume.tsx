@@ -4,7 +4,7 @@ import { memo } from "react"
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { StatusBadge } from "@/components/orbit/status-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { formatBytes } from "@/lib/format-size"
+import { diskLabel, syncLabel } from "@/lib/repo-facts"
 import { formatRelativeFromIso } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import type { OpenTarget } from "@/lib/api"
@@ -12,7 +12,6 @@ import type { RepoRecord } from "@/types/repo"
 
 type QuickResumeProps = {
   repos: RepoRecord[]
-  /** True while the initial or manual scan is in progress (used with repo count for UI). */
   scanLoading: boolean
   pinnedPaths: Set<string>
   onTogglePin: (path: string) => void
@@ -24,26 +23,6 @@ type QuickResumeProps = {
   onEditMetadata: (path: string) => void
 }
 
-function syncLabel(repo: RepoRecord): string | null {
-  if (repo.aheadCount == null || repo.behindCount == null) return null
-  if (repo.aheadCount === 0 && repo.behindCount === 0) return "Synced"
-  return `↑${repo.aheadCount} ↓${repo.behindCount}`
-}
-
-function diskLabel(repo: RepoRecord): string | null {
-  const repoSize = formatBytes(repo.workingTreeBytes)
-  const nodeModulesSize = formatBytes(repo.nodeModulesBytes)
-  if (!repoSize && !nodeModulesSize) return null
-  if (repoSize && nodeModulesSize) {
-    return `repo ${repoSize} · node_modules ${nodeModulesSize}`
-  }
-  if (repoSize) return `repo ${repoSize}`
-  return `node_modules ${nodeModulesSize}`
-}
-
-/**
- * Grid of the most recently active repositories (quick glance).
- */
 export const QuickResume = memo(function QuickResume({
   repos,
   scanLoading,
@@ -188,16 +167,24 @@ export const QuickResume = memo(function QuickResume({
               </p>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0 text-[10px] text-muted-foreground">
                 {repo.branch ? <span>{repo.branch}</span> : null}
-                {repo.lastCommitShortHash ? (
+                {/* {repo.lastCommitShortHash ? (
                   <span>{repo.lastCommitShortHash}</span>
-                ) : null}
+                ) : null} */}
                 {repo.lastCommitAuthor ? (
                   <span className="truncate">by {repo.lastCommitAuthor}</span>
                 ) : null}
               </div>
-              <div className="text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
                 <span>{formatRelativeFromIso(repo.lastCommitIso)}</span>
-                {syncLabel(repo) ? <span>{' · '} {syncLabel(repo)}</span> : null}
+                {(() => {
+                  const sync = syncLabel(repo)
+                  return sync != null ? (
+                    <span className="flex items-center gap-1" title={sync}>
+                      {" · "}
+                      <span>{sync}</span>
+                    </span>
+                  ) : null
+                })()}
               </div>
               <div className="h-px w-full bg-border/60 my-1"></div>
               {repo.stack.length > 0 && (

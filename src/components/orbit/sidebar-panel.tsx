@@ -1,4 +1,4 @@
-import { Folder, Pin } from "lucide-react"
+import { Folder, Wrench } from "lucide-react"
 import { memo } from "react"
 
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
@@ -19,7 +19,7 @@ type SidebarPanelProps = {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-2 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+    <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
       {children}
     </p>
   )
@@ -30,31 +30,49 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
  */
 export const SidebarPanel = memo(function SidebarPanel({
   pinned,
-  recent,
-  activeThisWeek,
-  stalled,
+  // recent,
+  // activeThisWeek,
+  // stalled,
   onPick,
   onOpenExternal,
 }: SidebarPanelProps) {
   return (
     <aside className="sticky top-0 z-20 flex h-svh w-60 shrink-0 flex-col overflow-y-auto border-r border-border bg-sidebar text-sidebar-foreground">
-      <div className="app-drag h-12 border-b border-border" aria-hidden />
+      <div className="app-drag h-12 border-b border-border flex items-center justify-end pr-3">
+        <h1 className="text-2xl font-semibold uppercase">
+          Orbit
+        </h1>
+      </div>
 
       <nav className="flex flex-1 flex-col gap-4 overflow-hidden p-3">
-        <button
-          type="button"
-          className={cn(
-            "flex items-center gap-2 bg-sidebar-accent px-2 py-1.5 text-left text-sm font-medium uppercase tracking-wider",
-          )}
-        >
-          <Folder className="size-4 shrink-0" aria-hidden />
-          Projects
-        </button>
+        <div className="flex flex-col gap-y-1">
+          <button
+            type="button"
+            className={cn(
+              "flex items-center gap-2 bg-sidebar-accent px-2 py-1.5 text-left text-sm font-medium uppercase tracking-wider",
+            )}
+          >
+            <Folder className="size-4 shrink-0" aria-hidden />
+            Projects
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "flex items-center gap-2 px-2 py-1.5 text-left text-sm font-medium uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed",
+            )}
+            disabled
+          >
+            <Wrench className="size-4 shrink-0" aria-hidden />
+            Tools
+          </button>
+        </div>
+
+        <Separator />
 
         <div className="space-y-2">
           <SectionTitle>Pinned</SectionTitle>
           <ScrollArea className="h-36">
-            <ul className="space-y-1.5 pr-2">
+            <ul className="flex flex-col gap-2">
               {pinned.length === 0 ? (
                 <li className="px-2 text-xs text-muted-foreground">
                   Pin repos from the list
@@ -62,20 +80,19 @@ export const SidebarPanel = memo(function SidebarPanel({
               ) : (
                 pinned.map((r) => (
                   <li key={r.path}>
-                    <div className="flex items-start gap-1 px-1">
+                    <div className="flex items-center gap-1 hover:bg-sidebar-accent">
                       <button
                         type="button"
                         onClick={() => onPick(r.path)}
-                        className="flex min-w-0 flex-1 items-center gap-2 py-1 pr-0 text-left text-sm hover:bg-sidebar-accent"
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm"
                       >
-                        <Pin className="size-3.5 shrink-0 text-highlight" aria-hidden />
                         <span className="truncate">{r.name}</span>
                       </button>
                       <OpenTargetButtons
                         path={r.path}
                         onOpenExternal={onOpenExternal}
                         size="compact"
-                        className="shrink-0 pt-0.5"
+                        className="shrink-0"
                       />
                     </div>
                   </li>
@@ -85,7 +102,7 @@ export const SidebarPanel = memo(function SidebarPanel({
           </ScrollArea>
         </div>
 
-        <Separator />
+        {/* <Separator />
 
         <div className="space-y-2">
           <SectionTitle>Recent</SectionTitle>
@@ -110,9 +127,9 @@ export const SidebarPanel = memo(function SidebarPanel({
               )}
             </ul>
           </ScrollArea>
-        </div>
+        </div> */}
 
-        <Separator />
+        {/* <Separator />
 
         <div className="space-y-2">
           <SectionTitle>Smart groups</SectionTitle>
@@ -126,7 +143,7 @@ export const SidebarPanel = memo(function SidebarPanel({
               <span className="text-muted-foreground">{stalled}</span>
             </li>
           </ul>
-        </div>
+        </div> */}
       </nav>
     </aside>
   )

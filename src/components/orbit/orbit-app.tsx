@@ -1,7 +1,9 @@
 import { Loader2, RefreshCw } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Route, Routes, useNavigate } from "react-router-dom"
 
 import { MetadataDialog } from "@/components/orbit/metadata-dialog"
+import { ProjectDetailPage } from "@/components/orbit/project-detail-page"
 import { SidebarPanel } from "@/components/orbit/sidebar-panel"
 import { ProjectFilters } from "@/components/orbit/project-filters"
 import type {
@@ -74,6 +76,7 @@ function matchesFilters(
  * Main Orbit layout and data orchestration.
  */
 export function OrbitApp() {
+  const navigate = useNavigate()
   const [prefs, setPrefs] = useState<Preferences | null>(null)
   const [repos, setRepos] = useState<RepoRecord[]>([])
   const [scanRoot, setScanRoot] = useState<string | null>(null)
@@ -243,18 +246,6 @@ export function OrbitApp() {
       try {
         const next = await savePreferences({ ...prefs, recent: nextRecent })
         setPrefs(next)
-        let copied = false
-        try {
-          await navigator.clipboard.writeText(path)
-          copied = true
-        } catch {
-          copied = false
-        }
-        setActionFeedback(
-          copied
-            ? "Added to Recent · path copied to clipboard"
-            : "Added to Recent (clipboard unavailable in this context)",
-        )
       } catch (e) {
         setActionFeedback(
           e instanceof Error ? e.message : "Could not save preferences",
@@ -262,6 +253,14 @@ export function OrbitApp() {
       }
     },
     [prefs],
+  )
+
+  const openProject = useCallback(
+    async (path: string) => {
+      await recordOpen(path)
+      navigate(`/project/${encodeURIComponent(path)}`)
+    },
+    [recordOpen, navigate],
   )
 
   const openExternal = useCallback(
@@ -383,17 +382,14 @@ export function OrbitApp() {
           recent={recentRepos}
           activeThisWeek={activeThisWeek}
           stalled={stalled}
-          onPick={recordOpen}
+          onPick={openProject}
           onOpenExternal={openExternal}
         />
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <header className="app-drag sticky top-0 z-20 flex flex-wrap items-start justify-between gap-4 border-b border-border px-6 py-3 bg-sidebar/30 dark:bg-sidebar/70 backdrop-blur-lg">
+          <header className="app-drag sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-border px-3 h-12 bg-sidebar/30 dark:bg-sidebar/70 backdrop-blur-lg">
             <div>
-              <h1 className="text-2xl font-semibold uppercase tracking-wider">
-                Orbit
-              </h1>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {repos.length} projects found
                 {scanRoot ? (
                   <span className="ml-2 text-[10px] opacity-80">
@@ -422,56 +418,80 @@ export function OrbitApp() {
             </Button>
           </header>
 
-          <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+          <div className="flex flex-1 flex-col gap-8 px-3 py-8">
             {error ? (
               <p className="border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 {error}
               </p>
             ) : null}
 
-            <QuickResume
-              repos={quickResume}
-              scanLoading={loading}
-              pinnedPaths={pinnedPathsSet}
-              onTogglePin={togglePin}
-              onOpen={recordOpen}
-              onOpenExternal={openExternal}
-              onOpenRemote={openRemote}
-              repoNotes={repoNotes}
-              repoTags={repoTags}
-              onEditMetadata={openMetadataDialog}
-            />
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <>
+                    <QuickResume
+                      repos={quickResume}
+                      scanLoading={loading}
+                      pinnedPaths={pinnedPathsSet}
+                      onTogglePin={togglePin}
+                      onOpen={openProject}
+                      onOpenExternal={openExternal}
+                      onOpenRemote={openRemote}
+                      repoNotes={repoNotes}
+                      repoTags={repoTags}
+                      onEditMetadata={openMetadataDialog}
+                    />
 
-            <Separator />
+                    <Separator />
 
-            <ProjectFilters
-              query={query}
-              onQueryChange={setQuery}
-              ownership={ownership}
-              onOwnershipChange={setOwnership}
-              status={status}
-              onStatusChange={setStatus}
-              stack={stack}
-              stackOptions={stackOptions}
-              onStackChange={setStack}
-              projectType={projectType}
-              onProjectTypeChange={setProjectType}
-              tag={tag}
-              tagOptions={tagOptions}
-              onTagChange={setTag}
-            />
+                    <ProjectFilters
+                      query={query}
+                      onQueryChange={setQuery}
+                      ownership={ownership}
+                      onOwnershipChange={setOwnership}
+                      status={status}
+                      onStatusChange={setStatus}
+                      stack={stack}
+                      stackOptions={stackOptions}
+                      onStackChange={setStack}
+                      projectType={projectType}
+                      onProjectTypeChange={setProjectType}
+                      tag={tag}
+                      tagOptions={tagOptions}
+                      onTagChange={setTag}
+                    />
 
-            <ProjectTable
-              repos={filtered}
-              pinnedPaths={pinnedPathsSet}
-              onTogglePin={togglePin}
-              onOpen={recordOpen}
-              onOpenExternal={openExternal}
-              onOpenRemote={openRemote}
-              repoNotes={repoNotes}
-              repoTags={repoTags}
-              onEditMetadata={openMetadataDialog}
-            />
+                    <ProjectTable
+                      repos={filtered}
+                      pinnedPaths={pinnedPathsSet}
+                      onTogglePin={togglePin}
+                      onOpen={openProject}
+                      onOpenExternal={openExternal}
+                      onOpenRemote={openRemote}
+                      repoNotes={repoNotes}
+                      repoTags={repoTags}
+                      onEditMetadata={openMetadataDialog}
+                    />
+                  </>
+                }
+              />
+              <Route
+                path="/project/:encodedPath"
+                element={
+                  <ProjectDetailPage
+                    repoByPath={repoByPath}
+                    pinnedPaths={pinnedPathsSet}
+                    repoNotes={repoNotes}
+                    repoTags={repoTags}
+                    onTogglePin={togglePin}
+                    onOpenExternal={openExternal}
+                    onOpenRemote={openRemote}
+                    onEditMetadata={openMetadataDialog}
+                  />
+                }
+              />
+            </Routes>
           </div>
         </main>
       </div>

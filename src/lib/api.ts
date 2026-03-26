@@ -74,6 +74,11 @@ export async function runScan(scanRoot?: string): Promise<ScanResponse> {
 
 export type OpenTarget = "finder" | "cursor" | "github" | "browser"
 
+export type RepoBranchesResponse = {
+  local: string[]
+  remote: string[]
+}
+
 /**
  * Opens a repo in local desktop tools via the local API (macOS).
  */
@@ -93,4 +98,15 @@ export async function openRepoPath(
       (typeof data.error === "string" ? data.error : null) ?? "Could not open",
     )
   }
+}
+
+/**
+ * Lists local and remote-tracking branches for a repository path.
+ */
+export async function fetchRepoBranches(
+  path: string,
+): Promise<RepoBranchesResponse> {
+  const params = new URLSearchParams({ path })
+  const res = await fetch(`/api/repo/branches?${params.toString()}`)
+  return parseJson<RepoBranchesResponse>(res)
 }
