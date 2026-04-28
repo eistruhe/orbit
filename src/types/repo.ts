@@ -28,6 +28,11 @@ export type Preferences = {
   scanRoot?: string
   repoNotes: Record<string, string>
   repoTags: Record<string, string[]>
+  appSettings: {
+    tinify?: {
+      apiKey?: string
+    }
+  }
 }
 
 export type ScanResponse = {

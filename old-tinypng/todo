@@ -1,0 +1,72 @@
+
+Batches
+  at end of loop if any files have error output to error.log
+Limit 10 drag and drops
+
+
+
+Pro Version 10+ drag drop
+Output to zip
+AWS S3 Support
+Folder /sub folder support
+
+
+- Show number off compressions left for the month -> let compressionsThisMonth = tinify.compressionCount;
+- https://www.npmjs.com/package/electron-about-window
+- https://www.npmjs.com/package/electron-settings
+
+
+- https://github.com/electron-userland/electron-packager
+electron-packager ./ --platform=win32 --arch=x86_64
+
+https://www.christianengvall.se/electron-packager-tutorial/
+
+https://www.christianengvall.se/dmg-installer-electron-app/
+https://www.christianengvall.se/electron-windows-installer/
+
+
+- package image cache
+C:\Users\xerverkillah\AppData\Local\electron\Cache
+
+- settings
+C:\Users\xerverkillah\AppData\Roaming\tinypngapp
+
+
+https://electronjs.org/docs/tutorial/mac-app-store-submission-guide
+
+
+
+https://github.com/request/request-promise-native
+
+<!doctype html>
+<html>
+<head>
+
+<meta charset="UTF-8">
+
+</head>
+
+<body>
+
+<script>
+let batch = 5;
+let list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 ];
+
+
+async function func() {
+  for (let index = 0; index < list.length; index += batch) {
+
+    for(let i = 0; (index + i < list.length) && i < batch; i++) {
+
+      document.write(list[index + i]+'<br>');
+    }
+    document.write('-----<br>');
+  }
+}
+
+
+
+</script>
+
+</body>
+</html>

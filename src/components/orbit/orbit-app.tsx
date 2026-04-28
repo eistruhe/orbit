@@ -1,11 +1,14 @@
 import { Loader2, RefreshCw } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Route, Routes, useNavigate } from "react-router-dom"
+import { Route, Routes, useLocation, useNavigate } from "react-router-dom"
 
 import { MetadataDialog } from "@/components/orbit/metadata-dialog"
 import { ProjectDetailPage } from "@/components/orbit/project-detail-page"
+import { SettingsPage } from "@/components/orbit/settings-page"
 import { SidebarPanel } from "@/components/orbit/sidebar-panel"
 import { ProjectFilters } from "@/components/orbit/project-filters"
+import { TinifyPage } from "@/components/orbit/tools/tinify-page"
+import { ToolsHubPage } from "@/components/orbit/tools/tools-hub-page"
 import type {
   OwnershipFilter,
   ProjectTypeFilter,
@@ -77,6 +80,7 @@ function matchesFilters(
  */
 export function OrbitApp() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [prefs, setPrefs] = useState<Preferences | null>(null)
   const [repos, setRepos] = useState<RepoRecord[]>([])
   const [scanRoot, setScanRoot] = useState<string | null>(null)
@@ -356,6 +360,11 @@ export function OrbitApp() {
     [prefs, metaDialogPath, metaSaving, closeMetadataDialog],
   )
 
+  const saveAllPreferences = useCallback(async (next: Preferences) => {
+    const saved = await savePreferences(next)
+    setPrefs(saved)
+  }, [])
+
   if (!prefs) {
     return (
       <div className="flex min-h-svh items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -387,39 +396,41 @@ export function OrbitApp() {
         />
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <header className="app-drag sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-border px-3 h-12 bg-sidebar/30 dark:bg-sidebar/70 backdrop-blur-lg">
-            <div>
-              <p className="text-xs text-muted-foreground">
-                {repos.length} projects found
-                {scanRoot ? (
-                  <span className="ml-2 text-[10px] opacity-80">
-                    · {scanRoot}
-                  </span>
-                ) : null}
-                {scannedAt ? (
-                  <span className="ml-2 text-[10px] opacity-80">
-                    · scanned {new Date(scannedAt).toLocaleString()}
-                  </span>
-                ) : null}
-              </p>
-            </div>
-            <Button
-              type="button"
-              onClick={() => void doScan()}
-              disabled={loading}
-              className="app-no-drag gap-2"
-            >
-              {loading ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <RefreshCw className="size-4" />
-              )}
-              Scan projects
-            </Button>
-          </header>
+          {location.pathname === "/" || location.pathname.startsWith("/project/") ? (
+            <header className="app-drag sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-border px-3 h-12 bg-sidebar/30 dark:bg-sidebar/70 backdrop-blur-lg">
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  {repos.length} projects found
+                  {scanRoot ? (
+                    <span className="ml-2 text-[10px] opacity-80">
+                      · {scanRoot}
+                    </span>
+                  ) : null}
+                  {scannedAt ? (
+                    <span className="ml-2 text-[10px] opacity-80">
+                      · scanned {new Date(scannedAt).toLocaleString()}
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+              <Button
+                type="button"
+                onClick={() => void doScan()}
+                disabled={loading}
+                className="app-no-drag gap-2"
+              >
+                {loading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-4" />
+                )}
+                Scan projects
+              </Button>
+            </header>
+          ) : null}
 
           <div className="flex flex-1 flex-col gap-8 px-3 py-8">
-            {error ? (
+            {error && (location.pathname === "/" || location.pathname.startsWith("/project/")) ? (
               <p className="border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 {error}
               </p>
@@ -490,6 +501,12 @@ export function OrbitApp() {
                     onEditMetadata={openMetadataDialog}
                   />
                 }
+              />
+              <Route path="/tools" element={<ToolsHubPage />} />
+              <Route path="/tools/tinify" element={<TinifyPage />} />
+              <Route
+                path="/settings"
+                element={<SettingsPage prefs={prefs} onSave={saveAllPreferences} />}
               />
             </Routes>
           </div>

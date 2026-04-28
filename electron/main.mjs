@@ -5,7 +5,7 @@ import { extname, join, normalize, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
-import { app, BrowserWindow, dialog, shell } from "electron"
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron"
 
 /** Leave 8788 for `bun run dev`; Electron uses a dedicated default. */
 const API_PORT = Number(process.env.ORBIT_API_PORT) || 38488
@@ -17,6 +17,7 @@ let apiProcess = null
 let uiServer = null
 let mainWindow = null
 let isQuitting = false
+let preloadScriptPath = null
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = resolve(__filename, "..")
@@ -44,12 +45,14 @@ function resolveRuntimePaths() {
       bunBinaryPath: join(process.resourcesPath, "runtime", "bun"),
       serverEntryPath: join(process.resourcesPath, "runtime", "server", "index.js"),
       distPath: join(app.getAppPath(), "dist"),
+      preloadPath: join(app.getAppPath(), "electron", "preload.cjs"),
     }
   }
   return {
     bunBinaryPath: process.env.ORBIT_BUN_PATH || "bun",
     serverEntryPath: join(projectRoot, "electron", "runtime", "server", "index.js"),
     distPath: join(projectRoot, "dist"),
+    preloadPath: join(projectRoot, "electron", "preload.cjs"),
   }
 }
 
@@ -204,7 +207,7 @@ function startApiProcess({ bunBinaryPath, serverEntryPath }) {
   return child
 }
 
-function createMainWindow() {
+function createMainWindow(preloadPath) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (!mainWindow.isVisible()) {
       mainWindow.show()
@@ -230,6 +233,7 @@ function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: preloadPath,
     },
     title: "Orbit",
     ...macTitleBarOptions,
@@ -243,6 +247,16 @@ function createMainWindow() {
       return { action: "deny" }
     }
     return { action: "allow" }
+  })
+
+  // Prevent accidental app reload shortcuts in production-style desktop usage.
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    const key = typeof input.key === "string" ? input.key.toLowerCase() : ""
+    const isReloadShortcut =
+      key === "f5" || (key === "r" && (Boolean(input.meta) || Boolean(input.control)))
+    if (isReloadShortcut) {
+      event.preventDefault()
+    }
   })
 
   mainWindow.on("close", (event) => {
@@ -259,7 +273,9 @@ function createMainWindow() {
 
 async function boot() {
   const runtimePaths = resolveRuntimePaths()
+  preloadScriptPath = runtimePaths.preloadPath
   await ensureExists(runtimePaths.serverEntryPath)
+  await ensureExists(runtimePaths.preloadPath)
   if (runtimePaths.bunBinaryPath !== "bun") {
     await ensureExists(runtimePaths.bunBinaryPath)
   }
@@ -268,7 +284,7 @@ async function boot() {
   apiProcess = startApiProcess(runtimePaths)
   await waitForApi()
   await startUiServer(runtimePaths.distPath)
-  createMainWindow()
+  createMainWindow(runtimePaths.preloadPath)
 }
 
 async function showBootError(error) {
@@ -305,8 +321,18 @@ app.on("activate", () => {
     return
   }
   if (BrowserWindow.getAllWindows().length === 0) {
-    createMainWindow()
+    createMainWindow(preloadScriptPath ?? resolveRuntimePaths().preloadPath)
   }
+})
+
+ipcMain.handle("orbit:pick-image-paths", async () => {
+  const window = BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined
+  const result = await dialog.showOpenDialog(window, {
+    properties: ["openFile", "multiSelections"],
+    filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg"] }],
+  })
+  if (result.canceled) return []
+  return result.filePaths
 })
 
 app.whenReady().then(async () => {

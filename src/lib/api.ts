@@ -79,6 +79,24 @@ export type RepoBranchesResponse = {
   remote: string[]
 }
 
+export type TinifyResult = {
+  path: string
+  outputPath?: string
+  inputSize?: number
+  outputSize?: number
+  error?: string
+}
+
+export type TinifyResponse = {
+  results: TinifyResult[]
+}
+
+export type TinifyKeyValidation = {
+  valid: boolean
+  message: string
+  compressionCount?: number
+}
+
 /**
  * Opens a repo in local desktop tools via the local API (macOS).
  */
@@ -109,4 +127,47 @@ export async function fetchRepoBranches(
   const params = new URLSearchParams({ path })
   const res = await fetch(`/api/repo/branches?${params.toString()}`)
   return parseJson<RepoBranchesResponse>(res)
+}
+
+export async function tinifyPaths(
+  paths: string[],
+  replaceOriginal: boolean,
+): Promise<TinifyResponse> {
+  const res = await fetch("/api/tinify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paths, replaceOriginal }),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text) as unknown as TinifyResponse & {
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Tinify request failed",
+    )
+  }
+  return data
+}
+
+export async function validateTinifyKey(
+  apiKey: string,
+): Promise<TinifyKeyValidation> {
+  const res = await fetch("/api/tinify/validate-key", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ apiKey }),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text) as unknown as TinifyKeyValidation & {
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Could not validate API key",
+    )
+  }
+  return data
 }

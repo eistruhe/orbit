@@ -13,6 +13,11 @@ export type Preferences = {
   scanRoot?: string
   repoNotes: Record<string, string>
   repoTags: Record<string, string[]>
+  appSettings: {
+    tinify?: {
+      apiKey?: string
+    }
+  }
 }
 
 const CONFIG_DIR = join(homedir(), ".config", "orbit")
@@ -23,7 +28,22 @@ const defaultPreferences = (): Preferences => ({
   recent: [],
   repoNotes: {},
   repoTags: {},
+  appSettings: {},
 })
+
+function parseAppSettings(input: unknown): Preferences["appSettings"] {
+  if (!input || typeof input !== "object") return {}
+  const appSettings = input as { tinify?: unknown }
+  if (!appSettings.tinify || typeof appSettings.tinify !== "object") {
+    return {}
+  }
+  const tinify = appSettings.tinify as { apiKey?: unknown }
+  const parsedTinify: { apiKey?: string } = {}
+  if (typeof tinify.apiKey === "string") {
+    parsedTinify.apiKey = tinify.apiKey
+  }
+  return { tinify: parsedTinify }
+}
 
 /**
  * Reads preferences from ~/.config/orbit/config.json.
@@ -57,6 +77,7 @@ export async function readPreferences(): Promise<Preferences> {
               ]),
             )
           : {},
+      appSettings: parseAppSettings(parsed.appSettings),
     }
   } catch {
     return defaultPreferences()

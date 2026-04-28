@@ -2,7 +2,7 @@
 // server/index.ts
 import { execFile as execFile4 } from "child_process";
 import { homedir as homedir2 } from "os";
-import { join as join4 } from "path";
+import { join as join5 } from "path";
 import { promisify as promisify4 } from "util";
 
 // node_modules/hono/dist/compose.js
@@ -1620,8 +1620,23 @@ var defaultPreferences = () => ({
   pinnedPaths: [],
   recent: [],
   repoNotes: {},
-  repoTags: {}
+  repoTags: {},
+  appSettings: {}
 });
+function parseAppSettings(input) {
+  if (!input || typeof input !== "object")
+    return {};
+  const appSettings = input;
+  if (!appSettings.tinify || typeof appSettings.tinify !== "object") {
+    return {};
+  }
+  const tinify = appSettings.tinify;
+  const parsedTinify = {};
+  if (typeof tinify.apiKey === "string") {
+    parsedTinify.apiKey = tinify.apiKey;
+  }
+  return { tinify: parsedTinify };
+}
 async function readPreferences() {
   try {
     const raw2 = await readFile(CONFIG_PATH, "utf8");
@@ -1635,7 +1650,8 @@ async function readPreferences() {
       repoTags: parsed.repoTags && typeof parsed.repoTags === "object" ? Object.fromEntries(Object.entries(parsed.repoTags).map(([path, tags]) => [
         path,
         Array.isArray(tags) ? tags.filter((tag) => typeof tag === "string") : []
-      ])) : {}
+      ])) : {},
+      appSettings: parseAppSettings(parsed.appSettings)
     };
   } catch {
     return defaultPreferences();
@@ -1990,6 +2006,171 @@ async function scanRepos(scanRoot) {
   });
 }
 
+// server/tinify.ts
+import { readFile as readFile3, rename, stat as stat3, writeFile as writeFile2 } from "fs/promises";
+import { dirname as dirname2, extname, join as join4, parse, resolve as resolve2 } from "path";
+var TINIFY_SHRINK_URL = "https://api.tinify.com/shrink";
+var ALLOWED_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"]);
+var MAX_CONCURRENCY = 3;
+function toBasicAuthHeader(apiKey) {
+  return `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}`;
+}
+function readCompressionCountHeader(response) {
+  const headerValue = response.headers.get("compression-count") ?? response.headers.get("Compression-Count");
+  if (!headerValue)
+    return;
+  const parsed = Number(headerValue);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+async function parseJsonSafe(response) {
+  const text = await response.text();
+  if (!text)
+    return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+async function getUniqueSiblingPath(inputPath) {
+  const parsed = parse(inputPath);
+  let candidate = join4(parsed.dir, `${parsed.name}-tinified${parsed.ext}`);
+  let counter = 1;
+  while (true) {
+    try {
+      await stat3(candidate);
+      candidate = join4(parsed.dir, `${parsed.name}-tinified-${counter}${parsed.ext}`);
+      counter += 1;
+    } catch {
+      return candidate;
+    }
+  }
+}
+async function writeOutputFile(outputBytes, originalPath, replaceOriginal) {
+  if (!replaceOriginal) {
+    const outputPath = await getUniqueSiblingPath(originalPath);
+    await writeFile2(outputPath, outputBytes);
+    return outputPath;
+  }
+  const tempPath = join4(dirname2(originalPath), `.${parse(originalPath).name}.tinify-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}${parse(originalPath).ext}`);
+  await writeFile2(tempPath, outputBytes);
+  await rename(tempPath, originalPath);
+  return originalPath;
+}
+async function tinifySinglePath(apiKey, path, replaceOriginal) {
+  try {
+    const resolvedPath = resolve2(path);
+    const extension = extname(resolvedPath).toLowerCase();
+    if (!ALLOWED_EXTENSIONS.has(extension)) {
+      return { path, error: "Only PNG and JPG images are supported." };
+    }
+    const fileStats = await stat3(resolvedPath);
+    if (!fileStats.isFile()) {
+      return { path, error: "Path is not a file." };
+    }
+    const inputBytes = await readFile3(resolvedPath);
+    const shrinkResponse = await fetch(TINIFY_SHRINK_URL, {
+      method: "POST",
+      headers: {
+        Authorization: toBasicAuthHeader(apiKey)
+      },
+      body: inputBytes
+    });
+    if (!shrinkResponse.ok) {
+      const errorPayload = await parseJsonSafe(shrinkResponse);
+      const errorMessage = errorPayload?.message ?? errorPayload?.error ?? `Tinify request failed with ${shrinkResponse.status}.`;
+      return { path, error: errorMessage };
+    }
+    const shrinkPayload = await parseJsonSafe(shrinkResponse);
+    const outputUrl = shrinkResponse.headers.get("location") ?? shrinkPayload?.output?.url ?? null;
+    if (!outputUrl) {
+      return { path, error: "Tinify did not return an output URL." };
+    }
+    const downloadResponse = await fetch(outputUrl, {
+      headers: { Authorization: toBasicAuthHeader(apiKey) }
+    });
+    if (!downloadResponse.ok) {
+      return {
+        path,
+        error: `Could not download compressed image (${downloadResponse.status}).`
+      };
+    }
+    const outputBytes = new Uint8Array(await downloadResponse.arrayBuffer());
+    const outputPath = await writeOutputFile(outputBytes, resolvedPath, replaceOriginal);
+    const outputSize = shrinkPayload?.output?.size ?? outputBytes.byteLength;
+    return {
+      path: resolvedPath,
+      outputPath,
+      inputSize: fileStats.size,
+      outputSize
+    };
+  } catch (error) {
+    return {
+      path,
+      error: error instanceof Error ? error.message : "Unexpected Tinify error."
+    };
+  }
+}
+async function mapLimit(items, limit, run) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await run(items[index]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return results;
+}
+async function tinifyPaths(apiKey, paths, replaceOriginal) {
+  return mapLimit(paths, MAX_CONCURRENCY, (path) => tinifySinglePath(apiKey, path, replaceOriginal));
+}
+async function validateTinifyApiKey(apiKey) {
+  try {
+    const response = await fetch(TINIFY_SHRINK_URL, {
+      method: "POST",
+      headers: {
+        Authorization: toBasicAuthHeader(apiKey)
+      }
+    });
+    const compressionCount = readCompressionCountHeader(response);
+    const payload = await parseJsonSafe(response);
+    if (response.status === 401 || response.status === 403) {
+      return {
+        valid: false,
+        message: payload?.message ?? "Invalid API key.",
+        compressionCount
+      };
+    }
+    if (response.status === 429) {
+      return {
+        valid: true,
+        message: payload?.message ?? "API key is valid, but usage or rate limit has been reached.",
+        compressionCount
+      };
+    }
+    if (response.ok || response.status >= 400 && response.status < 500) {
+      return {
+        valid: true,
+        message: "API key looks valid.",
+        compressionCount
+      };
+    }
+    return {
+      valid: false,
+      message: payload?.message ?? `Tinify validation failed with status ${response.status}.`,
+      compressionCount
+    };
+  } catch (error) {
+    return {
+      valid: false,
+      message: error instanceof Error ? error.message : "Could not validate API key right now."
+    };
+  }
+}
+
 // server/index.ts
 var execFileAsync4 = promisify4(execFile4);
 var PORT = (() => {
@@ -1997,7 +2178,16 @@ var PORT = (() => {
   return Number.isFinite(n) && n > 0 ? n : 8788;
 })();
 function defaultScanRoot() {
-  return process.env.ORBIT_SCAN_ROOT ?? join4(homedir2(), "Sites");
+  return process.env.ORBIT_SCAN_ROOT ?? join5(homedir2(), "Sites");
+}
+async function listRepoBranches(repoPath) {
+  const localResult = await execFileAsync4("git", ["for-each-ref", "--format=%(refname:short)", "refs/heads"], { cwd: repoPath, env: process.env, maxBuffer: 1024 * 1024 });
+  const remoteResult = await execFileAsync4("git", ["for-each-ref", "--format=%(refname:short)", "refs/remotes"], { cwd: repoPath, env: process.env, maxBuffer: 1024 * 1024 });
+  const local = localResult.stdout.split(`
+`).map((line) => line.trim()).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  const remote = remoteResult.stdout.split(`
+`).map((line) => line.trim()).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  return { local, remote };
 }
 var app = new Hono2;
 app.get("/api/health", (c) => c.json({ ok: true, service: "orbit-api" }));
@@ -2016,13 +2206,23 @@ app.put("/api/preferences", async (c) => {
     path,
     Array.isArray(tags) ? tags.filter((tag) => typeof tag === "string") : []
   ]) : null;
+  const nextAppSettings = body.appSettings && typeof body.appSettings === "object" ? {
+    ...current.appSettings,
+    ...body.appSettings,
+    tinify: body.appSettings.tinify && typeof body.appSettings.tinify === "object" ? {
+      ...current.appSettings.tinify,
+      ...body.appSettings.tinify,
+      apiKey: typeof body.appSettings.tinify?.apiKey === "string" ? body.appSettings.tinify.apiKey : current.appSettings.tinify?.apiKey
+    } : current.appSettings.tinify
+  } : current.appSettings;
   const next = {
     ...current,
     pinnedPaths: Array.isArray(body.pinnedPaths) ? body.pinnedPaths.filter((p) => typeof p === "string") : current.pinnedPaths,
     recent: Array.isArray(body.recent) ? body.recent.filter((r) => r && typeof r === "object" && typeof r.path === "string" && typeof r.lastOpenedAt === "string") : current.recent,
     scanRoot: typeof body.scanRoot === "string" && body.scanRoot.length > 0 ? body.scanRoot : current.scanRoot,
     repoNotes: noteEntries ? Object.fromEntries(noteEntries) : current.repoNotes,
-    repoTags: tagEntries ? Object.fromEntries(tagEntries) : current.repoTags
+    repoTags: tagEntries ? Object.fromEntries(tagEntries) : current.repoTags,
+    appSettings: nextAppSettings
   };
   await writePreferences(next);
   return c.json(next);
@@ -2049,6 +2249,38 @@ app.post("/api/scan", async (c) => {
   }
   const repos = await scanRepos(scanRoot);
   return c.json({ scanRoot, scannedAt, repos });
+});
+app.post("/api/tinify", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  const paths = Array.isArray(body.paths) ? body.paths.filter((path) => typeof path === "string" && path.length > 0) : [];
+  const replaceOriginal = typeof body.replaceOriginal === "boolean" ? body.replaceOriginal : true;
+  if (paths.length === 0) {
+    return c.json({ error: "No image paths were provided" }, 400);
+  }
+  const prefs = await readPreferences();
+  const apiKey = prefs.appSettings.tinify?.apiKey?.trim();
+  if (!apiKey) {
+    return c.json({
+      error: "TinyPNG API key is missing. Add it in Settings before compressing images."
+    }, 400);
+  }
+  const results = await tinifyPaths(apiKey, paths, replaceOriginal);
+  return c.json({ results });
+});
+app.post("/api/tinify/validate-key", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
+  if (!apiKey) {
+    return c.json({ error: "Missing API key" }, 400);
+  }
+  const validation = await validateTinifyApiKey(apiKey);
+  return c.json(validation);
 });
 app.post("/api/open", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -2078,6 +2310,28 @@ app.post("/api/open", async (c) => {
     status: 200,
     headers: { "Content-Type": "application/json; charset=utf-8" }
   });
+});
+app.get("/api/repo/branches", async (c) => {
+  const pathStr = c.req.query("path");
+  if (!pathStr) {
+    return c.json({ error: "Missing path" }, 400);
+  }
+  const prefs = await readPreferences();
+  const scanRoot = prefs.scanRoot ?? defaultScanRoot();
+  let safePath;
+  try {
+    safePath = await resolvePathUnderRoot(pathStr, scanRoot);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return c.json({ error: message }, 400);
+  }
+  try {
+    const branches = await listRepoBranches(safePath);
+    return c.json(branches);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return c.json({ error: message }, 500);
+  }
 });
 console.log(`orbit API listening on http://127.0.0.1:${PORT}`);
 var server_default = {

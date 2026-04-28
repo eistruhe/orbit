@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>tinyPNGApp</title>
+    <link rel="stylesheet" href="node_modules/bootstrap/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="assets/css/style.css">
+
+  </head>
+  <body>
+    <div class="overwrite">
+      <input type="checkbox">
+      <label>Overwrite Original</label>
+    </div>
+    <div class="file-process"></div>
+    <div class="alert text-center"></div>
+
+    <footer>
+      v<script>document.write(window.require('electron').remote.app.getVersion());</script>
+      by <a class="link open" target="_blank" href="https://www.betweenelements.com">BetweenElements</a> - powered by
+      <a class="link open" target="_blank" href="http://www.tinypng.com">tinypng</a> -
+      <a class="link apikey">change api key</a>
+    </footer>
+
+    <div class="modal" data-backdrop="static" data-keyboard="false" tabindex="-1" role="dialog">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Enter tinyPNG API Key</h5>
+          </div>
+          <div class="modal-body">
+            <input class="form-control api-input" type="text" />
+          </div>
+          <div class="modal-footer">
+            <div class="get-api-info">Get a API Key from <a class="open" target="_blank" href="https://tinypng.com/developers">tinyPNG</a></div>
+            <button type="button" class="btn btn-primary btn-cancel">Cancel</button>
+            <button type="button" class="btn btn-primary btn-save">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>require('./assets/js/renderer.js');</script>
+    <script src="node_modules/popper.js/dist/umd/popper.js"></script>
+    <script src="node_modules/bootstrap/dist/js/bootstrap.js"></script>
+  </body>
+</html>

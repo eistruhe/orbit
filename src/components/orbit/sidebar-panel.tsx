@@ -1,5 +1,6 @@
-import { Folder, Wrench } from "lucide-react"
-import { memo } from "react"
+import { ChevronDown, ChevronRight, Folder, Settings, Wrench } from "lucide-react"
+import { memo, useEffect, useState } from "react"
+import { useLocation, useNavigate } from "react-router-dom"
 
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -36,6 +37,20 @@ export const SidebarPanel = memo(function SidebarPanel({
   onPick,
   onOpenExternal,
 }: SidebarPanelProps) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const projectsActive =
+    location.pathname === "/" || location.pathname.startsWith("/project/")
+  const toolsActive = location.pathname.startsWith("/tools")
+  const settingsActive = location.pathname.startsWith("/settings")
+  const [toolsExpanded, setToolsExpanded] = useState(toolsActive)
+
+  useEffect(() => {
+    if (toolsActive) {
+      setToolsExpanded(true)
+    }
+  }, [toolsActive])
+
   return (
     <aside className="sticky top-0 z-20 flex h-svh w-60 shrink-0 flex-col overflow-y-auto border-r border-border bg-sidebar text-sidebar-foreground">
       <div className="app-drag h-12 border-b border-border flex items-center justify-end pr-3">
@@ -48,8 +63,10 @@ export const SidebarPanel = memo(function SidebarPanel({
         <div className="flex flex-col gap-y-1">
           <button
             type="button"
+            onClick={() => navigate("/")}
             className={cn(
-              "flex items-center gap-2 bg-sidebar-accent px-2 py-1.5 text-left text-sm font-medium uppercase tracking-wider",
+              "flex items-center gap-2 px-2 py-1.5 text-left text-sm font-medium uppercase tracking-wider",
+              projectsActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
             )}
           >
             <Folder className="size-4 shrink-0" aria-hidden />
@@ -57,13 +74,53 @@ export const SidebarPanel = memo(function SidebarPanel({
           </button>
           <button
             type="button"
+            onClick={() => {
+              if (!toolsActive) {
+                navigate("/tools")
+                setToolsExpanded(true)
+                return
+              }
+              setToolsExpanded((current) => !current)
+            }}
             className={cn(
-              "flex items-center gap-2 px-2 py-1.5 text-left text-sm font-medium uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed",
+              "flex items-center justify-between gap-2 px-2 py-1.5 text-left text-sm font-medium uppercase tracking-wider hover:bg-sidebar-accent",
+              toolsActive ? "bg-sidebar-accent" : "",
             )}
-            disabled
           >
-            <Wrench className="size-4 shrink-0" aria-hidden />
-            Tools
+            <span className="flex items-center gap-2">
+              <Wrench className="size-4 shrink-0" aria-hidden />
+              Tools
+            </span>
+            {toolsExpanded ? (
+              <ChevronDown className="size-4 shrink-0" aria-hidden />
+            ) : (
+              <ChevronRight className="size-4 shrink-0" aria-hidden />
+            )}
+          </button>
+          {toolsExpanded ? (
+            <button
+              type="button"
+              onClick={() => navigate("/tools/tinify")}
+              className={cn(
+                "ml-6 flex items-center gap-2 px-2 py-1.5 text-left text-sm",
+                location.pathname === "/tools/tinify"
+                  ? "bg-sidebar-accent"
+                  : "hover:bg-sidebar-accent",
+              )}
+            >
+              Tinify
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => navigate("/settings")}
+            className={cn(
+              "flex items-center gap-2 px-2 py-1.5 text-left text-sm font-medium uppercase tracking-wider hover:bg-sidebar-accent",
+              settingsActive ? "bg-sidebar-accent" : "",
+            )}
+          >
+            <Settings className="size-4 shrink-0" aria-hidden />
+            Settings
           </button>
         </div>
 

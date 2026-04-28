@@ -10,6 +10,7 @@ const execFileAsync = promisify(execFile)
 import { openLocalPath, resolvePathUnderRoot } from "./open-path.ts"
 import { readPreferences, writePreferences } from "./prefs.ts"
 import { scanRepos } from "./scan.ts"
+import { tinifyPaths, validateTinifyApiKey } from "./tinify.ts"
 
 /** Default avoids 8787 — commonly used by Wrangler and other local dev servers. */
 const PORT = (() => {
@@ -85,6 +86,30 @@ app.put("/api/preferences", async (c) => {
             : [],
         ])
       : null
+  const nextAppSettings =
+    body.appSettings && typeof body.appSettings === "object"
+      ? {
+          ...current.appSettings,
+          ...(body.appSettings as Record<string, unknown>),
+          tinify:
+            (body.appSettings as { tinify?: unknown }).tinify &&
+            typeof (body.appSettings as { tinify?: unknown }).tinify === "object"
+              ? {
+                  ...current.appSettings.tinify,
+                  ...((body.appSettings as { tinify?: unknown }).tinify as Record<
+                    string,
+                    unknown
+                  >),
+                  apiKey:
+                    typeof ((body.appSettings as { tinify?: { apiKey?: unknown } })
+                      .tinify?.apiKey) === "string"
+                      ? (body.appSettings as { tinify: { apiKey: string } }).tinify
+                          .apiKey
+                      : current.appSettings.tinify?.apiKey,
+                }
+              : current.appSettings.tinify,
+        }
+      : current.appSettings
   const next = {
     ...current,
     pinnedPaths: Array.isArray(body.pinnedPaths)
@@ -105,6 +130,7 @@ app.put("/api/preferences", async (c) => {
         : current.scanRoot,
     repoNotes: noteEntries ? Object.fromEntries(noteEntries) : current.repoNotes,
     repoTags: tagEntries ? Object.fromEntries(tagEntries) : current.repoTags,
+    appSettings: nextAppSettings,
   }
   await writePreferences(next)
   return c.json(next)
@@ -143,6 +169,60 @@ app.post("/api/scan", async (c) => {
 
   const repos = await scanRepos(scanRoot)
   return c.json({ scanRoot, scannedAt, repos })
+})
+
+app.post("/api/tinify", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+
+  const paths = Array.isArray((body as { paths?: unknown }).paths)
+    ? (body as { paths: unknown[] }).paths.filter(
+        (path): path is string => typeof path === "string" && path.length > 0,
+      )
+    : []
+  const replaceOriginal =
+    typeof (body as { replaceOriginal?: unknown }).replaceOriginal === "boolean"
+      ? (body as { replaceOriginal: boolean }).replaceOriginal
+      : true
+
+  if (paths.length === 0) {
+    return c.json({ error: "No image paths were provided" }, 400)
+  }
+
+  const prefs = await readPreferences()
+  const apiKey = prefs.appSettings.tinify?.apiKey?.trim()
+  if (!apiKey) {
+    return c.json(
+      {
+        error:
+          "TinyPNG API key is missing. Add it in Settings before compressing images.",
+      },
+      400,
+    )
+  }
+
+  const results = await tinifyPaths(apiKey, paths, replaceOriginal)
+  return c.json({ results })
+})
+
+app.post("/api/tinify/validate-key", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+
+  const apiKey =
+    typeof (body as { apiKey?: unknown }).apiKey === "string"
+      ? (body as { apiKey: string }).apiKey.trim()
+      : ""
+  if (!apiKey) {
+    return c.json({ error: "Missing API key" }, 400)
+  }
+
+  const validation = await validateTinifyApiKey(apiKey)
+  return c.json(validation)
 })
 
 app.post("/api/open", async (c) => {
