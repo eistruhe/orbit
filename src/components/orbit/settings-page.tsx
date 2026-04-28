@@ -102,18 +102,6 @@ export function SettingsPage({ prefs, onSave }: SettingsPageProps) {
       <Card className="max-w-3xl">
         <CardHeader>
           <CardTitle>TinyPNG API key</CardTitle>
-          <CardDescription>
-            Paste your API key from{" "}
-            <a
-              href="https://tinypng.com/developers"
-              target="_blank"
-              rel="noreferrer"
-              className="underline underline-offset-4"
-            >
-              https://tinypng.com/developers
-            </a>
-            .
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           <Input
@@ -128,7 +116,7 @@ export function SettingsPage({ prefs, onSave }: SettingsPageProps) {
           {error ? (
             <p className="text-xs text-destructive">{error}</p>
           ) : validationResult ? (
-            <div className="space-y-1">
+            <div className="flex gap-1">
               <p
                 className={`text-xs ${validationResult.valid ? "text-emerald-600" : "text-destructive"}`}
               >
@@ -136,7 +124,7 @@ export function SettingsPage({ prefs, onSave }: SettingsPageProps) {
               </p>
               {typeof validationResult.compressionCount === "number" ? (
                 <p className="text-xs text-muted-foreground">
-                  This month: {validationResult.compressionCount} compressions
+                  Compressions this month: {validationResult.compressionCount}/500.
                 </p>
               ) : null}
             </div>

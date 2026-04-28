@@ -429,6 +429,22 @@ export function OrbitApp() {
             </header>
           ) : null}
 
+          {location.pathname.startsWith("/tools") ? (
+            <header className="app-drag sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-border px-3 h-12 bg-sidebar/30 dark:bg-sidebar/70 backdrop-blur-lg">
+              <h2 className="text-xl font-semibold">
+                Tools{" "}
+                <span className="text-muted-foreground">
+                  {location.pathname.split("/")[2]
+                    ? location.pathname.split("/")[2]
+                        .replace(/-/g, " ")
+                        .replace(/\b\w/g, (l) => l.toUpperCase())
+                    : ""}
+                </span>
+              </h2>
+
+            </header>
+          ) : null}
+
           <div className="flex flex-1 flex-col gap-8 px-3 py-8">
             {error && (location.pathname === "/" || location.pathname.startsWith("/project/")) ? (
               <p className="border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">

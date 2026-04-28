@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/card"
 import { formatBytes } from "@/lib/format-size"
 import { tinifyPaths, type TinifyResult } from "@/lib/api"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Checkbox } from "@/components/ui/checkbox"
 
 const ACCEPTED_EXTENSIONS = [".png", ".jpg", ".jpeg"]
 
@@ -163,13 +165,6 @@ export function TinifyPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold">Tinify</h2>
-        <p className="text-sm text-muted-foreground">
-          Drop PNG and JPG images to compress them through TinyPNG.
-        </p>
-      </div>
-
       <Card className="max-w-5xl">
         <CardHeader>
           <CardTitle>Image compression</CardTitle>
@@ -236,14 +231,10 @@ export function TinifyPage() {
             }}
           />
 
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={replaceOriginal}
-              onChange={(event) => setReplaceOriginal(event.target.checked)}
-            />
-            Replace original image
-          </label>
+          <Field orientation="horizontal" className="w-auto">
+            <Checkbox id="replaceOriginal" checked={replaceOriginal} onCheckedChange={(checked) => setReplaceOriginal(Boolean(checked))} />
+            <FieldLabel htmlFor="replaceOriginal">Replace original image</FieldLabel>
+          </Field>
 
           <div className="flex items-center gap-2">
             <Button
