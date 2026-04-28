@@ -3,14 +3,36 @@ import { useEffect, useState } from "react"
 import { useOrbit } from "@/components/orbit/orbit-context"
 import { validateTinifyKey } from "@/lib/api"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+
+type SectionProps = {
+  title: string
+  description?: string
+  children: React.ReactNode
+  footer?: React.ReactNode
+}
+
+function Section({ title, description, children, footer }: SectionProps) {
+  return (
+    <section className="max-w-3xl border border-border bg-card">
+      <header className="flex flex-col gap-1 border-b border-border px-3 py-2">
+        <h3 className="text-[10px] uppercase tracking-[0.16em] text-foreground">
+          [{title}]
+        </h3>
+        {description ? (
+          <p className="text-[11px] text-muted-foreground">{description}</p>
+        ) : null}
+      </header>
+      <div className="space-y-3 p-3">{children}</div>
+      {footer ? (
+        <footer className="flex items-center justify-end gap-2 border-t border-border px-3 py-2">
+          {footer}
+        </footer>
+      ) : null}
+    </section>
+  )
+}
+
 export function SettingsPage() {
   const { prefs, saveAllPreferences } = useOrbit()
   const [tinifyApiKey, setTinifyApiKey] = useState(
@@ -86,11 +108,36 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-4">
-      <Card className="max-w-3xl">
-        <CardHeader>
-          <CardTitle>TinyPNG API key</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
+      <Section
+        title="TinyPNG API key"
+        description="Stored locally in Orbit preferences on this machine."
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void validateKey()}
+              disabled={saving || validating}
+            >
+              {validating ? "Validating…" : "Validate key"}
+            </Button>
+            <Button
+              type="button"
+              variant="highlight"
+              size="sm"
+              onClick={() => void saveSettings()}
+              disabled={saving}
+            >
+              {saving ? "Saving…" : "Save settings"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-1">
+          <label className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+            API key
+          </label>
           <Input
             type="password"
             value={tinifyApiKey}
@@ -98,43 +145,33 @@ export function SettingsPage() {
               setTinifyApiKey(event.target.value)
               setValidationResult(null)
             }}
-            placeholder="API key"
+            placeholder="Paste tinypng api key"
           />
-          {error ? (
-            <p className="text-xs text-destructive">{error}</p>
-          ) : validationResult ? (
-            <div className="flex gap-1">
-              <p
-                className={`text-xs ${validationResult.valid ? "text-emerald-600" : "text-destructive"}`}
-              >
-                {validationResult.message}
-              </p>
-              {typeof validationResult.compressionCount === "number" ? (
-                <p className="text-xs text-muted-foreground">
-                  Compressions this month: {validationResult.compressionCount}/500.
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Stored locally in Orbit preferences on this machine.
-            </p>
-          )}
-        </CardContent>
-        <CardFooter className="justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void validateKey()}
-            disabled={saving || validating}
+        </div>
+        {error ? (
+          <p className="border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
+            {error}
+          </p>
+        ) : validationResult ? (
+          <div
+            className={
+              validationResult.valid
+                ? "border border-success/40 bg-success/10 px-2 py-1 text-[11px] text-success"
+                : "border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] text-destructive"
+            }
           >
-            {validating ? "Validating..." : "Validate key"}
-          </Button>
-          <Button type="button" onClick={() => void saveSettings()} disabled={saving}>
-            {saving ? "Saving..." : "Save settings"}
-          </Button>
-        </CardFooter>
-      </Card>
+            <p>{validationResult.message}</p>
+            {typeof validationResult.compressionCount === "number" ? (
+              <p className="text-muted-foreground">
+                Compressions this month:{" "}
+                <span className="tabular-nums text-foreground">
+                  {validationResult.compressionCount}/500
+                </span>
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </Section>
     </div>
   )
 }

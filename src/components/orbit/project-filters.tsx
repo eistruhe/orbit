@@ -1,8 +1,8 @@
-import { Search } from "lucide-react"
+import { Search, X } from "lucide-react"
 import { memo } from "react"
 
 import { Input } from "@/components/ui/input"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { cn } from "@/lib/utils"
 
 export type OwnershipFilter = "all" | "remote" | "local"
 export type StatusFilter = "all" | "clean" | "dirty" | "error"
@@ -26,7 +26,7 @@ type ProjectFiltersProps = {
 }
 
 /**
- * Search field and compact filter tabs for the project table.
+ * Search field and inline mono filter chips for the project table.
  */
 export const ProjectFilters = memo(function ProjectFilters({
   query,
@@ -44,30 +44,60 @@ export const ProjectFilters = memo(function ProjectFilters({
   tagOptions,
   onTagChange,
 }: ProjectFiltersProps) {
+  const hasAnyFilter =
+    ownership !== "all" ||
+    status !== "all" ||
+    stack !== "all" ||
+    projectType !== "all" ||
+    tag !== "all" ||
+    query.trim().length > 0
+
   return (
-    <div className="space-y-4">
-      <div className="relative">
-        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+    <div className="space-y-3">
+      <div className="flex items-stretch border border-border bg-card">
+        <div className="flex h-9 shrink-0 items-center gap-1.5 border-r border-border px-3">
+          <Search className="size-3.5 text-muted-foreground" aria-hidden />
+          <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+            Search
+          </span>
+        </div>
         <Input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Search projects..."
-          className="h-10 border-border bg-background! pl-9 text-sm uppercase"
+          placeholder="Filter by name, path, branch, tag…"
+          className="h-9 border-0 bg-transparent px-3 placeholder:normal-case placeholder:tracking-normal"
         />
+        {hasAnyFilter ? (
+          <button
+            type="button"
+            onClick={() => {
+              onQueryChange("")
+              onOwnershipChange("all")
+              onStatusChange("all")
+              onStackChange("all")
+              onProjectTypeChange("all")
+              onTagChange("all")
+            }}
+            className="flex h-9 shrink-0 items-center gap-1 border-l border-border px-3 text-[10px] uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <X className="size-3" aria-hidden />
+            Reset
+          </button>
+        ) : null}
       </div>
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
-        <FilterTabs
+      <div className="flex flex-wrap gap-3">
+        <FilterChips
           label="Ownership"
           value={ownership}
           onValueChange={(v) => onOwnershipChange(v as OwnershipFilter)}
           options={[
             { value: "all", label: "All" },
-            { value: "remote", label: "With remote" },
-            { value: "local", label: "Local only" },
+            { value: "remote", label: "Remote" },
+            { value: "local", label: "Local" },
           ]}
         />
-        <FilterTabs
+        <FilterChips
           label="Status"
           value={status}
           onValueChange={(v) => onStatusChange(v as StatusFilter)}
@@ -78,8 +108,8 @@ export const ProjectFilters = memo(function ProjectFilters({
             { value: "error", label: "Error" },
           ]}
         />
-        <FilterTabs
-          label="Tech stack"
+        <FilterChips
+          label="Stack"
           value={stack}
           onValueChange={onStackChange}
           options={[
@@ -87,16 +117,16 @@ export const ProjectFilters = memo(function ProjectFilters({
             ...stackOptions.map((s) => ({ value: s, label: s })),
           ]}
         />
-        <FilterTabs
-          label="Project type"
+        <FilterChips
+          label="Type"
           value={projectType}
           onValueChange={(v) => onProjectTypeChange(v as ProjectTypeFilter)}
           options={[
             { value: "all", label: "All" },
-            { value: "web", label: "Web app" },
+            { value: "web", label: "Web" },
           ]}
         />
-        <FilterTabs
+        <FilterChips
           label="Tags"
           value={tag}
           onValueChange={onTagChange}
@@ -110,7 +140,7 @@ export const ProjectFilters = memo(function ProjectFilters({
   )
 })
 
-function FilterTabs({
+function FilterChips({
   label,
   value,
   onValueChange,
@@ -122,23 +152,31 @@ function FilterTabs({
   options: { value: string; label: string }[]
 }) {
   return (
-    <div className="space-y-1.5">
-      <p className="text-[10px] tracking-widest text-muted-foreground uppercase">
-        {label}
-      </p>
-      <Tabs value={value} onValueChange={onValueChange}>
-        <TabsList className="h-auto flex-wrap justify-start gap-1 bg-muted p-1">
-          {options.map((o) => (
-            <TabsTrigger
+    <div className="flex items-center gap-1.5">
+      <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+        [{label}]
+      </span>
+      <div className="flex items-stretch border border-border">
+        {options.map((o, i) => {
+          const isActive = value === o.value
+          return (
+            <button
+              type="button"
               key={o.value}
-              value={o.value}
-              className="px-2 py-1 text-[11px] data-[state=active]:border data-[state=active]:border-foreground/20"
+              onClick={() => onValueChange(o.value)}
+              className={cn(
+                "h-6 px-2 text-[10px] uppercase tracking-[0.06em] transition-colors",
+                i > 0 && "border-l border-border",
+                isActive
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
             >
               {o.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

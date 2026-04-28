@@ -17,10 +17,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useOrbit } from "@/components/orbit/orbit-context"
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { StatusBadge } from "@/components/orbit/status-badge"
-import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
 import type { RepoBranchesResponse } from "@/lib/api"
 import { fetchRepoBranches } from "@/lib/api"
 import { diskLabel, syncLabel } from "@/lib/repo-facts"
@@ -36,22 +33,51 @@ function decodeProjectPath(value: string | undefined): string | null {
   }
 }
 
-function DetailRow({
-  icon: Icon,
-  label,
-  children,
-}: {
-  icon: React.ComponentType<{ className?: string }>
+type SectionProps = {
+  title: string
+  icon?: React.ComponentType<{ className?: string }>
+  trailing?: React.ReactNode
+  children: React.ReactNode
+  className?: string
+}
+
+function Section({ title, icon: Icon, trailing, children, className }: SectionProps) {
+  return (
+    <section className={cn("border border-border bg-card", className)}>
+      <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
+        <div className="flex items-center gap-2">
+          {Icon ? <Icon className="size-3.5 text-muted-foreground" aria-hidden /> : null}
+          <h2 className="text-[10px] uppercase tracking-[0.16em] text-foreground">
+            [{title}]
+          </h2>
+        </div>
+        {trailing}
+      </header>
+      <div className="p-3">{children}</div>
+    </section>
+  )
+}
+
+type DataRowProps = {
   label: string
   children: React.ReactNode
-}) {
+  mono?: boolean
+}
+
+function DataRow({ label, children, mono }: DataRowProps) {
   return (
-    <div className="flex items-start gap-3 text-sm">
-      <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-      <div className="min-w-0">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="ml-2 break-all">{children}</span>
-      </div>
+    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-baseline gap-3 border-b border-border/50 py-1.5 last:border-b-0">
+      <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </span>
+      <span
+        className={cn(
+          "min-w-0 break-words text-[11px] text-foreground",
+          mono && "font-mono tabular-nums",
+        )}
+      >
+        {children}
+      </span>
     </div>
   )
 }
@@ -108,11 +134,11 @@ export function ProjectDetailPage() {
   if (!decodedPath || !repo) {
     return (
       <section className="space-y-4">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
           Project not in current scan.
         </p>
-        <Link to="/" className={buttonVariants()}>
-          Back to Projects
+        <Link to="/" className={buttonVariants({ variant: "outline", size: "sm" })}>
+          ← Back to Projects
         </Link>
       </section>
     )
@@ -126,235 +152,251 @@ export function ProjectDetailPage() {
   const hasMetadata = tags.length > 0 || !!note
 
   return (
-    <section className="space-y-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+    <section className="space-y-5">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
         <Link
           to="/"
-          className={buttonVariants({
-            variant: "link",
-            className: "h-auto px-0 text-xs",
-          })}
+          className="hover:text-foreground"
         >
           Projects
         </Link>
-        <span>/</span>
+        <span className="text-border-strong">/</span>
         {pathParts.map((part, index) => (
-          <span key={`${part}-${index}`}>
+          <span
+            key={`${part}-${index}`}
+            className={cn(
+              index === pathParts.length - 1 && "text-foreground",
+            )}
+          >
             {part}
-            {index < pathParts.length - 1 ? " / " : ""}
+            {index < pathParts.length - 1 ? (
+              <span className="ml-1.5 text-border-strong">/</span>
+            ) : null}
           </span>
         ))}
       </div>
 
-      {/* Hero header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">{repo.name}</h1>
-            <StatusBadge repo={repo} />
+      <div className="border border-border bg-card">
+        <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="size-1.5 bg-highlight shadow-[0_0_8px_var(--highlight)]" aria-hidden />
+              <span className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
+                Repository
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-medium uppercase tracking-[0.04em]">
+                {repo.name}
+              </h1>
+              <StatusBadge repo={repo} />
+            </div>
+            <p className="text-[11px] text-muted-foreground">{repo.path}</p>
           </div>
-          <p className="text-xs text-muted-foreground">{repo.path}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2"
-            onClick={() => void togglePin(repo.path)}
-          >
-            <Pin
-              className={cn(
-                "size-3.5",
-                pinnedPathsSet.has(repo.path)
-                  ? "text-highlight"
-                  : "text-muted-foreground",
-              )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void togglePin(repo.path)}
+            >
+              <Pin
+                className={cn(
+                  "size-3.5",
+                  pinnedPathsSet.has(repo.path)
+                    ? "text-highlight"
+                    : "text-muted-foreground",
+                )}
+              />
+              {pinnedPathsSet.has(repo.path) ? "Pinned" : "Pin"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => openMetadataDialog(repo.path)}
+            >
+              <Pencil className="size-3.5 text-muted-foreground" />
+              Meta
+            </Button>
+            <OpenTargetButtons
+              path={repo.path}
+              onOpenExternal={openExternal}
+              remoteUrl={repo.remoteUrl}
+              onOpenRemote={() => openRemote(repo.remoteUrl)}
             />
-            {pinnedPathsSet.has(repo.path) ? "Pinned" : "Pin"}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2"
-            onClick={() => openMetadataDialog(repo.path)}
-          >
-            <Pencil className="size-3.5 text-muted-foreground" />
-            Meta
-          </Button>
-          <OpenTargetButtons
-            path={repo.path}
-            onOpenExternal={openExternal}
-            remoteUrl={repo.remoteUrl}
-            onOpenRemote={() => openRemote(repo.remoteUrl)}
-          />
+          </div>
         </div>
       </div>
 
-      <Separator />
-
-      {/* Info grid */}
       <div className="grid gap-4 md:grid-cols-2">
-        {/* Latest Commit */}
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <GitCommit className="size-4 text-muted-foreground" />
-              Latest Commit
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm leading-relaxed">
-              {repo.lastCommitMessage ?? repo.error ?? "No commit"}
-            </p>
-            <Separator />
-            <div className="space-y-2">
-              {repo.branch ? (
-                <DetailRow icon={GitBranch} label="Branch">{repo.branch}</DetailRow>
-              ) : null}
-              {repo.lastCommitShortHash ? (
-                <DetailRow icon={Hash} label="Hash">
-                  <code className="text-xs">{repo.lastCommitShortHash}</code>
-                </DetailRow>
-              ) : null}
-              {repo.lastCommitAuthor ? (
-                <DetailRow icon={User} label="Author">{repo.lastCommitAuthor}</DetailRow>
-              ) : null}
-              {repo.lastCommitIso ? (
-                <DetailRow icon={Clock} label="When">
+        <Section title="Latest Commit" icon={GitCommit}>
+          <p className="mb-3 border-l-2 border-highlight bg-highlight/5 px-2 py-1 text-[12px] leading-relaxed text-foreground">
+            {repo.lastCommitMessage ?? repo.error ?? "No commit"}
+          </p>
+          <div>
+            {repo.branch ? (
+              <DataRow label="Branch">
+                <span className="inline-flex items-center gap-1">
+                  <GitBranch className="size-3 text-muted-foreground" aria-hidden />
+                  {repo.branch}
+                </span>
+              </DataRow>
+            ) : null}
+            {repo.lastCommitShortHash ? (
+              <DataRow label="Hash" mono>
+                <span className="inline-flex items-center gap-1">
+                  <Hash className="size-3 text-muted-foreground" aria-hidden />
+                  {repo.lastCommitShortHash}
+                </span>
+              </DataRow>
+            ) : null}
+            {repo.lastCommitAuthor ? (
+              <DataRow label="Author">
+                <span className="inline-flex items-center gap-1">
+                  <User className="size-3 text-muted-foreground" aria-hidden />
+                  {repo.lastCommitAuthor}
+                </span>
+              </DataRow>
+            ) : null}
+            {repo.lastCommitIso ? (
+              <DataRow label="When" mono>
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="size-3 text-muted-foreground" aria-hidden />
                   {formatRelativeFromIso(repo.lastCommitIso)}
-                </DetailRow>
-              ) : null}
-            </div>
-          </CardContent>
-        </Card>
+                </span>
+              </DataRow>
+            ) : null}
+          </div>
+        </Section>
 
-        {/* Repository Details */}
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <HardDrive className="size-4 text-muted-foreground" />
-              Repository
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <Section title="Repository" icon={HardDrive}>
+          <div>
             {sync ? (
-              <DetailRow icon={RefreshCw} label="Sync">{sync}</DetailRow>
+              <DataRow label="Sync">
+                <span className="inline-flex items-center gap-1">
+                  <RefreshCw className="size-3 text-muted-foreground" aria-hidden />
+                  {sync}
+                </span>
+              </DataRow>
             ) : null}
             {disk ? (
-              <DetailRow icon={HardDrive} label="Disk">{disk}</DetailRow>
+              <DataRow label="Disk" mono>
+                {disk}
+              </DataRow>
             ) : null}
             {repo.stack.length > 0 ? (
-              <>
-                <Separator />
-                <div className="space-y-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">Tech Stack</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {repo.stack.map((tech) => (
-                      <Badge key={tech} variant="secondary">{tech}</Badge>
-                    ))}
-                  </div>
-                </div>
-              </>
-            ) : null}
-            {!sync && !disk && repo.stack.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No repository details available</p>
-            ) : null}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Metadata (tags & notes) */}
-      {hasMetadata ? (
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Tag className="size-4 text-muted-foreground" />
-              Metadata
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {tags.length > 0 ? (
-              <div className="space-y-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Tags</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {tags.map((tag) => (
-                    <Badge key={tag} variant="outline">#{tag}</Badge>
+              <DataRow label="Tech Stack">
+                <div className="flex flex-wrap gap-1">
+                  {repo.stack.map((tech) => (
+                    <span
+                      key={tech}
+                      className="inline-flex h-5 items-center border border-border bg-surface-2 px-1.5 text-[10px] uppercase tracking-[0.06em] text-foreground/80"
+                    >
+                      {tech}
+                    </span>
                   ))}
                 </div>
-              </div>
+              </DataRow>
             ) : null}
-            {tags.length > 0 && note ? <Separator /> : null}
-            {note ? (
-              <div className="space-y-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Notes</span>
-                <p className="text-sm leading-relaxed text-muted-foreground">{note}</p>
-              </div>
+            {!sync && !disk && repo.stack.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground">
+                No repository details available
+              </p>
             ) : null}
-          </CardContent>
-        </Card>
+          </div>
+        </Section>
+      </div>
+
+      {hasMetadata ? (
+        <Section title="Metadata" icon={Tag}>
+          {tags.length > 0 ? (
+            <DataRow label="Tags">
+              <div className="flex flex-wrap gap-1">
+                {tags.map((t) => (
+                  <span
+                    key={t}
+                    className="inline-flex h-5 items-center border border-highlight/40 bg-highlight/10 px-1.5 text-[10px] uppercase tracking-[0.06em] text-highlight"
+                  >
+                    #{t}
+                  </span>
+                ))}
+              </div>
+            </DataRow>
+          ) : null}
+          {note ? (
+            <DataRow label="Notes">
+              <span className="italic text-muted-foreground">{note}</span>
+            </DataRow>
+          ) : null}
+        </Section>
       ) : null}
 
-      {/* Branches */}
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <GitBranch className="size-4 text-muted-foreground" />
-            Branches
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
-          {branchesLoading ? (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              Loading branches…
-            </div>
-          ) : null}
-          {branchesError ? (
-            <p className="text-destructive">{branchesError}</p>
-          ) : null}
-          {!branchesLoading && !branchesError && branches ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <h3 className="text-xs font-semibold tracking-wider uppercase text-muted-foreground">
-                  Local
-                </h3>
-                {branches.local.length > 0 ? (
-                  <ul className="space-y-1">
-                    {branches.local.map((name) => (
-                      <li key={`local-${name}`} className="flex items-center gap-2 text-xs">
-                        <GitBranch className="size-3 text-muted-foreground" />
-                        {name}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No local branches</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-xs font-semibold tracking-wider uppercase text-muted-foreground">
-                  Remote
-                </h3>
-                {branches.remote.length > 0 ? (
-                  <ul className="space-y-1">
-                    {branches.remote.map((name) => (
-                      <li key={`remote-${name}`} className="flex items-center gap-2 text-xs">
-                        <GitBranch className="size-3 text-muted-foreground" />
-                        {name}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No remote branches</p>
-                )}
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+      <Section title="Branches" icon={GitBranch}>
+        {branchesLoading ? (
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            Loading branches…
+          </div>
+        ) : null}
+        {branchesError ? (
+          <p className="text-[11px] text-destructive">{branchesError}</p>
+        ) : null}
+        {!branchesLoading && !branchesError && branches ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            <BranchList
+              title="Local"
+              count={branches.local.length}
+              items={branches.local}
+            />
+            <BranchList
+              title="Remote"
+              count={branches.remote.length}
+              items={branches.remote}
+            />
+          </div>
+        ) : null}
+      </Section>
     </section>
+  )
+}
+
+function BranchList({
+  title,
+  count,
+  items,
+}: {
+  title: string
+  count: number
+  items: string[]
+}) {
+  return (
+    <div className="border border-border bg-surface-2/40">
+      <div className="flex items-center justify-between border-b border-border px-2 py-1">
+        <h3 className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+          {title}
+        </h3>
+        <span className="text-[10px] tabular-nums text-foreground/80">
+          {count}
+        </span>
+      </div>
+      {items.length > 0 ? (
+        <ul>
+          {items.map((name) => (
+            <li
+              key={`${title}-${name}`}
+              className="flex items-center gap-1.5 border-b border-border/40 px-2 py-1 text-[11px] last:border-b-0"
+            >
+              <GitBranch className="size-3 text-muted-foreground" aria-hidden />
+              <span className="truncate">{name}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="px-2 py-3 text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+          No branches
+        </p>
+      )}
+    </div>
   )
 }

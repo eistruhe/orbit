@@ -364,8 +364,8 @@ export function OrbitApp() {
 
   if (!prefs) {
     return (
-      <div className="flex min-h-svh items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" />
+      <div className="flex min-h-svh items-center justify-center gap-2 bg-background text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin" />
         Loading preferences…
       </div>
     )
@@ -414,13 +414,14 @@ export function OrbitApp() {
   return (
     <OrbitContext.Provider value={contextValue}>
       <TooltipProvider delay={200}>
-        <div className="relative flex min-h-svh items-start text-foreground">
+        <div className="relative flex min-h-svh items-start bg-background bg-shell-gradient text-foreground">
           {actionFeedback ? (
             <span
               role="status"
               aria-live="polite"
-              className="fixed bottom-6 left-1/2 z-50 max-w-[min(90vw,28rem)] -translate-x-1/2 border border-border bg-card px-4 py-2 text-center text-xs text-foreground shadow-sm"
+              className="fixed bottom-6 left-1/2 z-50 inline-flex max-w-[min(90vw,28rem)] -translate-x-1/2 items-center gap-2 border border-border bg-card px-3 py-2 text-center font-mono text-[11px] uppercase tracking-[0.06em] text-foreground shadow-lg"
             >
+              <span className="size-1.5 bg-highlight shadow-[0_0_6px_var(--highlight)]" aria-hidden />
               {actionFeedback}
             </span>
           ) : null}

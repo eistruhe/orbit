@@ -2,17 +2,11 @@ import { Loader2, Upload } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
 import { formatBytes } from "@/lib/format-size"
 import { tinifyPaths, type TinifyResult } from "@/lib/api"
-import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
-import { Checkbox } from "@/components/ui/checkbox"
+import { cn } from "@/lib/utils"
 
 const ACCEPTED_EXTENSIONS = [".png", ".jpg", ".jpeg"]
 
@@ -59,6 +53,33 @@ type CompressionRow = {
   outputSize?: number
   error?: string
   status: CompressionStatus
+}
+
+type SectionProps = {
+  title: string
+  description?: string
+  trailing?: React.ReactNode
+  children: React.ReactNode
+  className?: string
+}
+
+function Section({ title, description, trailing, children, className }: SectionProps) {
+  return (
+    <section className={cn("border border-border bg-card", className)}>
+      <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <div className="flex flex-col gap-0.5">
+          <h3 className="text-[10px] uppercase tracking-[0.16em] text-foreground">
+            [{title}]
+          </h3>
+          {description ? (
+            <p className="text-[11px] text-muted-foreground">{description}</p>
+          ) : null}
+        </div>
+        {trailing}
+      </header>
+      <div className="p-3">{children}</div>
+    </section>
+  )
 }
 
 export function TinifyPage() {
@@ -163,18 +184,36 @@ export function TinifyPage() {
     [processQueue],
   )
 
+  const totalSaved = rows.reduce((acc, row) => {
+    if (
+      typeof row.inputSize !== "number" ||
+      typeof row.outputSize !== "number"
+    ) {
+      return acc
+    }
+    return acc + Math.max(0, row.inputSize - row.outputSize)
+  }, 0)
+
   return (
     <div className="space-y-4">
-      <Card className="max-w-5xl">
-        <CardHeader>
-          <CardTitle>Image compression</CardTitle>
-          <CardDescription>
-            {supportsDesktopFileBridge
-              ? "Drop or pick PNG/JPG files. Compression starts immediately."
-              : "Open Orbit desktop to enable drag-and-drop local file compression."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <Section
+        title="Image compression"
+        description={
+          supportsDesktopFileBridge
+            ? "Drop or pick PNG/JPG files. Compression starts immediately."
+            : "Open Orbit desktop to enable drag-and-drop local file compression."
+        }
+        className="max-w-5xl"
+        trailing={
+          busy ? (
+            <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Compressing
+            </span>
+          ) : null
+        }
+      >
+        <div className="space-y-3">
           <label
             onDragOver={(event) => {
               event.preventDefault()
@@ -200,15 +239,15 @@ export function TinifyPage() {
               }
               fileInputRef.current?.click()
             }}
-            className="flex min-h-32 cursor-pointer items-center justify-center border border-dashed border-border bg-muted/30 px-4 py-6 text-center"
+            className="flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-border-strong bg-surface-2/40 px-4 py-8 text-center transition-colors hover:border-foreground hover:bg-muted/50"
           >
-            <div className="space-y-2">
-              <Upload className="mx-auto size-5 text-muted-foreground" />
-              <p className="text-sm">Drop images here</p>
-              <p className="text-xs text-muted-foreground">
-                Supports .png, .jpg and .jpeg
-              </p>
-            </div>
+            <Upload className="size-5 text-muted-foreground" />
+            <p className="text-[11px] uppercase tracking-[0.08em] text-foreground">
+              Drop images here
+            </p>
+            <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+              .png · .jpg · .jpeg
+            </p>
           </label>
           <input
             ref={fileInputRef}
@@ -234,7 +273,11 @@ export function TinifyPage() {
           <FieldGroup className="max-w-xs">
             <FieldLabel>
               <Field orientation="horizontal">
-                <Checkbox id="replaceOriginal" checked={replaceOriginal} onCheckedChange={(checked) => setReplaceOriginal(Boolean(checked))} />
+                <Checkbox
+                  id="replaceOriginal"
+                  checked={replaceOriginal}
+                  onCheckedChange={(checked) => setReplaceOriginal(Boolean(checked))}
+                />
                 <FieldContent>
                   <FieldTitle>Replace original image</FieldTitle>
                 </FieldContent>
@@ -246,6 +289,7 @@ export function TinifyPage() {
             <Button
               type="button"
               variant="outline"
+              size="sm"
               onClick={() => {
                 queueRef.current = []
                 setRows([])
@@ -255,82 +299,103 @@ export function TinifyPage() {
             >
               Clear
             </Button>
-            {busy ? (
-              <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="size-3 animate-spin" />
-                Compressing...
-              </span>
-            ) : null}
           </div>
 
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        </CardContent>
-      </Card>
+          {error ? (
+            <p className="border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </Section>
 
       {rows.length > 0 ? (
-        <Card className="max-w-5xl">
-          <CardHeader>
-            <CardTitle>Results</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="py-2 pr-2 font-medium">Image</th>
-                    <th className="py-2 pr-2 font-medium">Original</th>
-                    <th className="py-2 pr-2 font-medium">Compressed</th>
-                    <th className="py-2 pr-2 font-medium">Saved</th>
-                    <th className="py-2 pr-2 font-medium">Progress</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((result) => {
-                    const percentSaved =
-                      typeof result.inputSize === "number" &&
-                      typeof result.outputSize === "number" &&
-                      result.inputSize > 0
-                        ? Math.max(
-                            0,
-                            ((result.inputSize - result.outputSize) /
-                              result.inputSize) *
-                              100,
-                          )
-                        : null
-                    return (
-                      <tr key={result.path}>
-                        <td className="py-2 pr-2">{getFileName(result.path)}</td>
-                        <td className="py-2 pr-2">
-                          {formatBytes(result.inputSize ?? null) ?? "-"}
-                        </td>
-                        <td className="py-2 pr-2">
-                          {formatBytes(result.outputSize ?? null) ?? "-"}
-                        </td>
-                        <td className="py-2 pr-2">
-                          {percentSaved == null ? "-" : `${percentSaved.toFixed(1)}%`}
-                        </td>
-                        <td className="py-2 pr-2">
-                          {result.error ? (
-                            <span className="text-destructive">{result.error}</span>
-                          ) : result.status === "queued" ? (
-                            <span className="text-muted-foreground">Queued</span>
-                          ) : result.status === "compressing" ? (
-                            <span className="inline-flex items-center gap-1 text-muted-foreground">
-                              <Loader2 className="size-3 animate-spin" />
-                              Compressing
-                            </span>
-                          ) : (
-                            "Done"
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+        <Section
+          title="Results"
+          className="max-w-5xl"
+          trailing={
+            <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+              Saved{" "}
+              <span className="tabular-nums text-success">
+                {formatBytes(totalSaved) ?? "0 B"}
+              </span>
+            </span>
+          }
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-[11px]">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="py-1.5 pr-2 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                    Image
+                  </th>
+                  <th className="py-1.5 pr-2 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                    Original
+                  </th>
+                  <th className="py-1.5 pr-2 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                    Compressed
+                  </th>
+                  <th className="py-1.5 pr-2 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                    Saved
+                  </th>
+                  <th className="py-1.5 pr-2 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((result) => {
+                  const percentSaved =
+                    typeof result.inputSize === "number" &&
+                    typeof result.outputSize === "number" &&
+                    result.inputSize > 0
+                      ? Math.max(
+                          0,
+                          ((result.inputSize - result.outputSize) /
+                            result.inputSize) *
+                            100,
+                        )
+                      : null
+                  return (
+                    <tr
+                      key={result.path}
+                      className="border-b border-border/40 hover:bg-muted/40"
+                    >
+                      <td className="py-1.5 pr-2">{getFileName(result.path)}</td>
+                      <td className="py-1.5 pr-2 tabular-nums text-muted-foreground">
+                        {formatBytes(result.inputSize ?? null) ?? "—"}
+                      </td>
+                      <td className="py-1.5 pr-2 tabular-nums">
+                        {formatBytes(result.outputSize ?? null) ?? "—"}
+                      </td>
+                      <td className="py-1.5 pr-2 tabular-nums text-success">
+                        {percentSaved == null ? "—" : `${percentSaved.toFixed(1)}%`}
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        {result.error ? (
+                          <span className="text-destructive">{result.error}</span>
+                        ) : result.status === "queued" ? (
+                          <span className="text-muted-foreground uppercase tracking-[0.06em]">
+                            Queued
+                          </span>
+                        ) : result.status === "compressing" ? (
+                          <span className="inline-flex items-center gap-1 uppercase tracking-[0.06em] text-muted-foreground">
+                            <Loader2 className="size-3 animate-spin" />
+                            Working
+                          </span>
+                        ) : (
+                          <span className="uppercase tracking-[0.06em] text-success">
+                            Done
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Section>
       ) : null}
     </div>
   )

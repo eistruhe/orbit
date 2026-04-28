@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { RepoRecord } from "@/types/repo"
 
@@ -7,30 +6,60 @@ type StatusBadgeProps = {
   className?: string
 }
 
+const baseClass =
+  "inline-flex h-5 w-fit shrink-0 items-center gap-1.5 border border-border bg-transparent px-1.5 font-mono text-[10px] uppercase tracking-[0.08em]"
+
 /**
- * Renders a compact status label for a repository row or card.
+ * Colored status dot + uppercase label, mono terminal style.
  */
 export function StatusBadge({ repo, className }: StatusBadgeProps) {
   if (repo.error) {
     return (
-      <Badge variant="destructive" className={cn("gap-1.5", className)}>
-        <span className="size-1.5 bg-current" aria-hidden />
+      <span
+        className={cn(
+          baseClass,
+          "border-destructive/40 text-destructive",
+          className,
+        )}
+      >
+        <span
+          className="size-1.5 rounded-none bg-destructive shadow-[0_0_6px_var(--destructive)]"
+          aria-hidden
+        />
         Error
-      </Badge>
+      </span>
     )
   }
   if (repo.isDirty) {
     return (
-      <Badge variant="outline" className={cn("gap-1.5 border-highlight/50 text-foreground", className)}>
-        <span className="size-1.5 bg-highlight" aria-hidden />
+      <span
+        className={cn(
+          baseClass,
+          "border-highlight/40 text-highlight",
+          className,
+        )}
+      >
+        <span
+          className="size-1.5 rounded-none bg-highlight shadow-[0_0_6px_var(--highlight)]"
+          aria-hidden
+        />
         Dirty
-      </Badge>
+      </span>
     )
   }
   return (
-    <Badge variant="secondary" className={cn("gap-1.5", className)}>
-      <span className="size-1.5 bg-foreground/40" aria-hidden />
+    <span
+      className={cn(
+        baseClass,
+        "border-success/40 text-success",
+        className,
+      )}
+    >
+      <span
+        className="size-1.5 rounded-none bg-success shadow-[0_0_6px_var(--success)]"
+        aria-hidden
+      />
       Clean
-    </Badge>
+    </span>
   )
 }

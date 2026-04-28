@@ -149,7 +149,7 @@ export function OpenTargetButtons({
               aria-label="Open in Browser"
               onClick={() => onOpenExternal(path, "browser")}
             >
-              <span className="text-[9px] font-semibold tracking-wider uppercase">
+              <span className="text-[9px] font-semibold uppercase">
                 Web
               </span>
             </Button>
