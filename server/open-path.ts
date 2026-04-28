@@ -13,7 +13,28 @@ export async function resolvePathUnderRoot(
   pathStr: string,
   allowedRoot: string,
 ): Promise<string> {
-  const rootReal = await realpath(resolve(allowedRoot))
+  return resolvePathUnderAllowedRoots(pathStr, [allowedRoot])
+}
+
+export async function resolvePathUnderAllowedRoots(
+  pathStr: string,
+  allowedRoots: string[],
+): Promise<string> {
+  if (allowedRoots.length === 0) {
+    throw new Error("No scan roots are configured")
+  }
+
+  const rootReals: string[] = []
+  for (const root of allowedRoots) {
+    try {
+      rootReals.push(await realpath(resolve(root)))
+    } catch {
+      // Skip missing or inaccessible roots.
+    }
+  }
+  if (rootReals.length === 0) {
+    throw new Error("No configured scan roots exist on disk")
+  }
   const abs = resolve(pathStr)
   let targetReal: string
   try {
@@ -21,10 +42,16 @@ export async function resolvePathUnderRoot(
   } catch {
     throw new Error("Path does not exist")
   }
-  const rel = relative(rootReal, targetReal)
-  if (rel.startsWith("..") || rel === "..") {
-    throw new Error("Path is outside the configured scan root")
+
+  const sortedRoots = [...new Set(rootReals)].sort((a, b) => b.length - a.length)
+  const insideAllowedRoot = sortedRoots.some((rootReal) => {
+    const rel = relative(rootReal, targetReal)
+    return !(rel.startsWith("..") || rel === "..")
+  })
+  if (!insideAllowedRoot) {
+    throw new Error("Path is outside the configured scan roots")
   }
+
   const st = await stat(targetReal)
   if (!st.isDirectory()) {
     throw new Error("Path is not a directory")

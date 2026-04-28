@@ -29,6 +29,7 @@ export type RepoRecord = {
   isDirty: boolean
   remoteUrl: string | null
   stack: string[]
+  orbitLibraryId: string
   error?: string
 }
 
@@ -170,7 +171,10 @@ function poolMap<T, R>(
 /**
  * Recursively finds git repos and enriches them with git metadata and stack hints.
  */
-export async function scanRepos(scanRoot: string): Promise<RepoRecord[]> {
+export async function scanRepos(
+  scanRoot: string,
+  orbitLibraryId = "primary",
+): Promise<RepoRecord[]> {
   const roots: string[] = []
   try {
     const st = await stat(scanRoot)
@@ -211,6 +215,7 @@ export async function scanRepos(scanRoot: string): Promise<RepoRecord[]> {
       isDirty: git.isDirty,
       remoteUrl: git.remoteUrl,
       stack,
+      orbitLibraryId,
     }
     if (git.error) {
       record.error = git.error

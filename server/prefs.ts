@@ -10,7 +10,9 @@ export type RecentEntry = {
 export type Preferences = {
   pinnedPaths: string[]
   recent: RecentEntry[]
+  primaryScanRootLabel: string
   scanRoot?: string
+  additionalScanRoots: ProjectLibrary[]
   repoNotes: Record<string, string>
   repoTags: Record<string, string[]>
   appSettings: {
@@ -20,16 +22,36 @@ export type Preferences = {
   }
 }
 
+export type ProjectLibrary = {
+  id: string
+  label: string
+  path: string
+}
+
 const CONFIG_DIR = join(homedir(), ".config", "orbit")
 const CONFIG_PATH = join(CONFIG_DIR, "config.json")
 
 const defaultPreferences = (): Preferences => ({
   pinnedPaths: [],
   recent: [],
+  primaryScanRootLabel: "Projects",
+  additionalScanRoots: [],
   repoNotes: {},
   repoTags: {},
   appSettings: {},
 })
+
+function parseAdditionalScanRoots(input: unknown): ProjectLibrary[] {
+  if (!Array.isArray(input)) return []
+  return input
+    .filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object")
+    .map((entry) => ({
+      id: typeof entry.id === "string" ? entry.id.trim() : "",
+      label: typeof entry.label === "string" ? entry.label.trim() : "",
+      path: typeof entry.path === "string" ? entry.path.trim() : "",
+    }))
+    .filter((entry) => entry.id.length > 0 && entry.label.length > 0 && entry.path.length > 0)
+}
 
 function parseAppSettings(input: unknown): Preferences["appSettings"] {
   if (!input || typeof input !== "object") return {}
@@ -57,6 +79,12 @@ export async function readPreferences(): Promise<Preferences> {
       ...parsed,
       pinnedPaths: Array.isArray(parsed.pinnedPaths) ? parsed.pinnedPaths : [],
       recent: Array.isArray(parsed.recent) ? parsed.recent : [],
+      primaryScanRootLabel:
+        typeof parsed.primaryScanRootLabel === "string" &&
+        parsed.primaryScanRootLabel.trim().length > 0
+          ? parsed.primaryScanRootLabel.trim()
+          : "Projects",
+      additionalScanRoots: parseAdditionalScanRoots(parsed.additionalScanRoots),
       repoNotes:
         parsed.repoNotes && typeof parsed.repoNotes === "object"
           ? Object.fromEntries(

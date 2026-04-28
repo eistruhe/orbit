@@ -4187,6 +4187,7 @@ var require_mime_type = __commonJS((exports, module) => {
 
 // server/index.ts
 import { execFile as execFile4 } from "child_process";
+import { stat as stat4 } from "fs/promises";
 import { homedir as homedir2 } from "os";
 import { join as join5 } from "path";
 import { promisify as promisify4 } from "util";
@@ -19470,8 +19471,19 @@ import { basename, relative, resolve } from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 var execFileAsync = promisify(execFile);
-async function resolvePathUnderRoot(pathStr, allowedRoot) {
-  const rootReal = await realpath(resolve(allowedRoot));
+async function resolvePathUnderAllowedRoots(pathStr, allowedRoots) {
+  if (allowedRoots.length === 0) {
+    throw new Error("No scan roots are configured");
+  }
+  const rootReals = [];
+  for (const root2 of allowedRoots) {
+    try {
+      rootReals.push(await realpath(resolve(root2)));
+    } catch {}
+  }
+  if (rootReals.length === 0) {
+    throw new Error("No configured scan roots exist on disk");
+  }
   const abs = resolve(pathStr);
   let targetReal;
   try {
@@ -19479,9 +19491,13 @@ async function resolvePathUnderRoot(pathStr, allowedRoot) {
   } catch {
     throw new Error("Path does not exist");
   }
-  const rel = relative(rootReal, targetReal);
-  if (rel.startsWith("..") || rel === "..") {
-    throw new Error("Path is outside the configured scan root");
+  const sortedRoots = [...new Set(rootReals)].sort((a, b) => b.length - a.length);
+  const insideAllowedRoot = sortedRoots.some((rootReal) => {
+    const rel = relative(rootReal, targetReal);
+    return !(rel.startsWith("..") || rel === "..");
+  });
+  if (!insideAllowedRoot) {
+    throw new Error("Path is outside the configured scan roots");
   }
   const st = await stat(targetReal);
   if (!st.isDirectory()) {
@@ -19540,10 +19556,21 @@ var CONFIG_PATH = join(CONFIG_DIR, "config.json");
 var defaultPreferences = () => ({
   pinnedPaths: [],
   recent: [],
+  primaryScanRootLabel: "Projects",
+  additionalScanRoots: [],
   repoNotes: {},
   repoTags: {},
   appSettings: {}
 });
+function parseAdditionalScanRoots(input) {
+  if (!Array.isArray(input))
+    return [];
+  return input.filter((value) => Boolean(value) && typeof value === "object").map((entry) => ({
+    id: typeof entry.id === "string" ? entry.id.trim() : "",
+    label: typeof entry.label === "string" ? entry.label.trim() : "",
+    path: typeof entry.path === "string" ? entry.path.trim() : ""
+  })).filter((entry) => entry.id.length > 0 && entry.label.length > 0 && entry.path.length > 0);
+}
 function parseAppSettings(input) {
   if (!input || typeof input !== "object")
     return {};
@@ -19567,6 +19594,8 @@ async function readPreferences() {
       ...parsed,
       pinnedPaths: Array.isArray(parsed.pinnedPaths) ? parsed.pinnedPaths : [],
       recent: Array.isArray(parsed.recent) ? parsed.recent : [],
+      primaryScanRootLabel: typeof parsed.primaryScanRootLabel === "string" && parsed.primaryScanRootLabel.trim().length > 0 ? parsed.primaryScanRootLabel.trim() : "Projects",
+      additionalScanRoots: parseAdditionalScanRoots(parsed.additionalScanRoots),
       repoNotes: parsed.repoNotes && typeof parsed.repoNotes === "object" ? Object.fromEntries(Object.entries(parsed.repoNotes).filter((entry) => typeof entry[0] === "string" && typeof entry[1] === "string")) : {},
       repoTags: parsed.repoTags && typeof parsed.repoTags === "object" ? Object.fromEntries(Object.entries(parsed.repoTags).map(([path, tags]) => [
         path,
@@ -19870,7 +19899,7 @@ function poolMap(items, limit, fn) {
     kick();
   });
 }
-async function scanRepos(scanRoot) {
+async function scanRepos(scanRoot, orbitLibraryId = "primary") {
   const roots = [];
   try {
     const st = await stat2(scanRoot);
@@ -19907,7 +19936,8 @@ async function scanRepos(scanRoot) {
       lastFsMtimeIso: disk.lastFsMtimeIso,
       isDirty: git.isDirty,
       remoteUrl: git.remoteUrl,
-      stack
+      stack,
+      orbitLibraryId
     };
     if (git.error) {
       record.error = git.error;
@@ -20101,6 +20131,35 @@ var PORT = (() => {
 function defaultScanRoot() {
   return process.env.ORBIT_SCAN_ROOT ?? join5(homedir2(), "Sites");
 }
+function expandHomePath(pathValue) {
+  if (pathValue === "~")
+    return homedir2();
+  if (pathValue.startsWith("~/")) {
+    return join5(homedir2(), pathValue.slice(2));
+  }
+  return pathValue;
+}
+function getPrimaryScanRoot(scanRoot) {
+  return scanRoot && scanRoot.length > 0 ? expandHomePath(scanRoot) : defaultScanRoot();
+}
+function parseAdditionalScanRoots2(input) {
+  if (!Array.isArray(input))
+    return [];
+  return input.filter((value) => Boolean(value) && typeof value === "object").map((entry) => ({
+    id: typeof entry.id === "string" ? entry.id.trim() : "",
+    label: typeof entry.label === "string" ? entry.label.trim() : "",
+    path: typeof entry.path === "string" ? entry.path.trim() : ""
+  })).filter((entry) => entry.id.length > 0 && entry.label.length > 0 && entry.path.length > 0);
+}
+function getConfiguredLibraries(scanRoot, primaryScanRootLabel, additionalScanRoots) {
+  const primary = {
+    id: "primary",
+    label: typeof primaryScanRootLabel === "string" && primaryScanRootLabel.trim().length > 0 ? primaryScanRootLabel.trim() : "Projects",
+    path: getPrimaryScanRoot(scanRoot)
+  };
+  const extras = additionalScanRoots.filter((root2) => root2.id !== "primary").map((root2) => ({ ...root2, path: expandHomePath(root2.path) }));
+  return [primary, ...extras];
+}
 async function listRepoBranches(repoPath) {
   const localResult = await execFileAsync4("git", ["for-each-ref", "--format=%(refname:short)", "refs/heads"], { cwd: repoPath, env: process.env, maxBuffer: 1024 * 1024 });
   const remoteResult = await execFileAsync4("git", ["for-each-ref", "--format=%(refname:short)", "refs/remotes"], { cwd: repoPath, env: process.env, maxBuffer: 1024 * 1024 });
@@ -20140,7 +20199,9 @@ app.put("/api/preferences", async (c) => {
     ...current,
     pinnedPaths: Array.isArray(body.pinnedPaths) ? body.pinnedPaths.filter((p) => typeof p === "string") : current.pinnedPaths,
     recent: Array.isArray(body.recent) ? body.recent.filter((r) => r && typeof r === "object" && typeof r.path === "string" && typeof r.lastOpenedAt === "string") : current.recent,
+    primaryScanRootLabel: typeof body.primaryScanRootLabel === "string" && body.primaryScanRootLabel.trim().length > 0 ? body.primaryScanRootLabel.trim() : current.primaryScanRootLabel,
     scanRoot: typeof body.scanRoot === "string" && body.scanRoot.length > 0 ? body.scanRoot : current.scanRoot,
+    additionalScanRoots: body.additionalScanRoots !== undefined ? parseAdditionalScanRoots2(body.additionalScanRoots) : current.additionalScanRoots,
     repoNotes: noteEntries ? Object.fromEntries(noteEntries) : current.repoNotes,
     repoTags: tagEntries ? Object.fromEntries(tagEntries) : current.repoTags,
     appSettings: nextAppSettings
@@ -20151,9 +20212,33 @@ app.put("/api/preferences", async (c) => {
 app.post("/api/scan", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const prefs = await readPreferences();
+  const libraries = getConfiguredLibraries(prefs.scanRoot, prefs.primaryScanRootLabel, prefs.additionalScanRoots);
   const fromBody = body && typeof body === "object" && typeof body.scanRoot === "string" ? body.scanRoot : undefined;
-  const scanRoot = fromBody ?? prefs.scanRoot ?? defaultScanRoot();
+  const fromLibraryId = body && typeof body === "object" && typeof body.libraryId === "string" ? body.libraryId : undefined;
+  const selectedLibrary = fromLibraryId ? libraries.find((library) => library.id === fromLibraryId) : undefined;
+  const scanRoot = expandHomePath(fromBody ?? selectedLibrary?.path ?? getPrimaryScanRoot(prefs.scanRoot));
+  const libraryId = selectedLibrary?.id ?? fromLibraryId ?? "primary";
   const scannedAt = new Date().toISOString();
+  try {
+    const st = await stat4(scanRoot);
+    if (!st.isDirectory()) {
+      return c.json({
+        error: `Scan root is not a directory: ${scanRoot}`,
+        libraryId,
+        scanRoot,
+        scannedAt,
+        repos: []
+      }, 400);
+    }
+  } catch {
+    return c.json({
+      error: `Scan root does not exist: ${scanRoot}`,
+      libraryId,
+      scanRoot,
+      scannedAt,
+      repos: []
+    }, 400);
+  }
   let gitAvailable = true;
   try {
     await execFileAsync4("git", ["--version"], { env: process.env });
@@ -20163,13 +20248,14 @@ app.post("/api/scan", async (c) => {
   if (!gitAvailable) {
     return c.json({
       error: "git CLI not found on PATH",
+      libraryId,
       scanRoot,
       scannedAt,
       repos: []
     }, 500);
   }
-  const repos = await scanRepos(scanRoot);
-  return c.json({ scanRoot, scannedAt, repos });
+  const repos = await scanRepos(scanRoot, libraryId);
+  return c.json({ libraryId, scanRoot, scannedAt, repos });
 });
 app.post("/api/tinify", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -20219,9 +20305,9 @@ app.post("/api/open", async (c) => {
     }, 400);
   }
   const prefs = await readPreferences();
-  const scanRoot = prefs.scanRoot ?? defaultScanRoot();
+  const allowedRoots = getConfiguredLibraries(prefs.scanRoot, prefs.primaryScanRootLabel, prefs.additionalScanRoots).map((library) => library.path);
   try {
-    const safe = await resolvePathUnderRoot(pathStr, scanRoot);
+    const safe = await resolvePathUnderAllowedRoots(pathStr, allowedRoots);
     await openLocalPath(safe, target);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -20246,10 +20332,10 @@ app.get("/api/repo/branches", async (c) => {
     return c.json({ error: "Missing path" }, 400);
   }
   const prefs = await readPreferences();
-  const scanRoot = prefs.scanRoot ?? defaultScanRoot();
+  const allowedRoots = getConfiguredLibraries(prefs.scanRoot, prefs.primaryScanRootLabel, prefs.additionalScanRoots).map((library) => library.path);
   let safePath;
   try {
-    safePath = await resolvePathUnderRoot(pathStr, scanRoot);
+    safePath = await resolvePathUnderAllowedRoots(pathStr, allowedRoots);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return c.json({ error: message }, 400);

@@ -4,6 +4,7 @@ import { useOrbit } from "@/components/orbit/orbit-context"
 import { validateTinifyKey } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import type { ProjectLibrary } from "@/types/repo"
 
 type SectionProps = {
   title: string
@@ -35,6 +36,13 @@ function Section({ title, description, children, footer }: SectionProps) {
 
 export function SettingsPage() {
   const { prefs, saveAllPreferences } = useOrbit()
+  const [primaryScanRootLabel, setPrimaryScanRootLabel] = useState(
+    prefs.primaryScanRootLabel || "Projects",
+  )
+  const [scanRoot, setScanRoot] = useState(prefs.scanRoot ?? "~/Sites")
+  const [additionalScanRoots, setAdditionalScanRoots] = useState<ProjectLibrary[]>(
+    prefs.additionalScanRoots,
+  )
   const [tinifyApiKey, setTinifyApiKey] = useState(
     prefs.appSettings.tinify?.apiKey ?? "",
   )
@@ -48,15 +56,67 @@ export function SettingsPage() {
   } | null>(null)
 
   useEffect(() => {
+    setPrimaryScanRootLabel(prefs.primaryScanRootLabel || "Projects")
+    setScanRoot(prefs.scanRoot ?? "~/Sites")
+    setAdditionalScanRoots(prefs.additionalScanRoots)
     setTinifyApiKey(prefs.appSettings.tinify?.apiKey ?? "")
-  }, [prefs.appSettings.tinify?.apiKey])
+  }, [
+    prefs.primaryScanRootLabel,
+    prefs.scanRoot,
+    prefs.additionalScanRoots,
+    prefs.appSettings.tinify?.apiKey,
+  ])
+
+  const addAdditionalRoot = () => {
+    const id =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `library-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    setAdditionalScanRoots((current) => [
+      ...current,
+      {
+        id,
+        label: "",
+        path: "",
+      },
+    ])
+  }
+
+  const updateAdditionalRoot = (
+    id: string,
+    field: "label" | "path",
+    value: string,
+  ) => {
+    setAdditionalScanRoots((current) =>
+      current.map((entry) =>
+        entry.id === id ? { ...entry, [field]: value } : entry,
+      ),
+    )
+  }
+
+  const removeAdditionalRoot = (id: string) => {
+    setAdditionalScanRoots((current) =>
+      current.filter((entry) => entry.id !== id),
+    )
+  }
 
   const saveSettings = async () => {
+    const sanitizedAdditionalRoots = additionalScanRoots
+      .map((entry) => ({
+        ...entry,
+        label: entry.label.trim(),
+        path: entry.path.trim(),
+      }))
+      .filter((entry) => entry.label.length > 0 && entry.path.length > 0)
+
     try {
       setSaving(true)
       setError(null)
       await saveAllPreferences({
         ...prefs,
+        primaryScanRootLabel: primaryScanRootLabel.trim() || "Projects",
+        scanRoot: scanRoot.trim() || undefined,
+        additionalScanRoots: sanitizedAdditionalRoots,
         appSettings: {
           ...prefs.appSettings,
           tinify: {
@@ -109,29 +169,99 @@ export function SettingsPage() {
   return (
     <div className="space-y-4">
       <Section
-        title="TinyPNG API key"
-        description="Stored locally in Orbit preferences on this machine."
-        footer={
-          <>
+        title="Projects directories"
+        description="Set the main projects directory and optional additional libraries."
+      >
+        <div className="grid grid-cols-[minmax(0,220px)_minmax(0,1fr)] gap-2">
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+              Main projects name
+            </label>
+            <Input
+              value={primaryScanRootLabel}
+              onChange={(event) => setPrimaryScanRootLabel(event.target.value)}
+              placeholder="Projects"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+              Main projects directory
+            </label>
+            <Input
+              value={scanRoot}
+              onChange={(event) => setScanRoot(event.target.value)}
+              placeholder="~/Sites"
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+              Additional directories
+            </label>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void validateKey()}
-              disabled={saving || validating}
-            >
-              {validating ? "Validating…" : "Validate key"}
-            </Button>
-            <Button
-              type="button"
-              variant="highlight"
-              size="sm"
-              onClick={() => void saveSettings()}
+              onClick={addAdditionalRoot}
               disabled={saving}
             >
-              {saving ? "Saving…" : "Save settings"}
+              Add directory
             </Button>
-          </>
+          </div>
+          {additionalScanRoots.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground">
+              No additional directories configured.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {additionalScanRoots.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] gap-2"
+                >
+                  <Input
+                    value={entry.label}
+                    onChange={(event) =>
+                      updateAdditionalRoot(entry.id, "label", event.target.value)
+                    }
+                    placeholder="Label (e.g. Apps)"
+                  />
+                  <Input
+                    value={entry.path}
+                    onChange={(event) =>
+                      updateAdditionalRoot(entry.id, "path", event.target.value)
+                    }
+                    placeholder="~/Apps"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => removeAdditionalRoot(entry.id)}
+                    disabled={saving}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Section>
+
+      <Section
+        title="TinyPNG API key"
+        description="Stored locally in Orbit preferences on this machine."
+        footer={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void validateKey()}
+            disabled={saving || validating}
+          >
+            {validating ? "Validating…" : "Validate key"}
+          </Button>
         }
       >
         <div className="space-y-1">
@@ -172,6 +302,18 @@ export function SettingsPage() {
           </div>
         ) : null}
       </Section>
+
+      <div className="max-w-3xl flex justify-end">
+        <Button
+          type="button"
+          variant="highlight"
+          size="sm"
+          onClick={() => void saveSettings()}
+          disabled={saving}
+        >
+          {saving ? "Saving…" : "Save settings"}
+        </Button>
+      </div>
     </div>
   )
 }

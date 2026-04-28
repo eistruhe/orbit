@@ -32,6 +32,12 @@ const projectsIndexRoute = createRoute({
   component: ProjectsHomePage,
 })
 
+const projectsLibraryRoute = createRoute({
+  getParentRoute: () => projectsLayoutRoute,
+  path: "/projects/lib/$libraryId",
+  component: ProjectsHomePage,
+})
+
 const projectDetailRoute = createRoute({
   getParentRoute: () => projectsLayoutRoute,
   path: "/project/$encodedPath",
@@ -81,7 +87,11 @@ const settingsIndexRoute = createRoute({
 })
 
 const routeTree = rootRoute.addChildren([
-  projectsLayoutRoute.addChildren([projectsIndexRoute, projectDetailRoute]),
+  projectsLayoutRoute.addChildren([
+    projectsIndexRoute,
+    projectsLibraryRoute,
+    projectDetailRoute,
+  ]),
   toolsLayoutRoute.addChildren([
     toolsIndexRoute,
     tinifyRoute,

@@ -7,9 +7,11 @@ import { ThemeToggle } from "@/components/orbit/theme-toggle"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import type { OpenTarget } from "@/lib/api"
-import type { RepoRecord } from "@/types/repo"
+import type { ProjectLibrary, RepoRecord } from "@/types/repo"
 
 type SidebarPanelProps = {
+  projectLibraries: ProjectLibrary[]
+  activeLibraryId: string
   pinned: RepoRecord[]
   recent: RepoRecord[]
   activeThisWeek: number
@@ -129,6 +131,8 @@ function SubNavRail({ children }: { children: React.ReactNode }) {
  * Left navigation: sectioned nav, pinned list, theme toggle.
  */
 export const SidebarPanel = memo(function SidebarPanel({
+  projectLibraries,
+  activeLibraryId,
   pinned,
   // recent,
   // activeThisWeek,
@@ -141,7 +145,14 @@ export const SidebarPanel = memo(function SidebarPanel({
     select: (state) => state.location.pathname,
   })
   const projectsActive =
-    pathname === "/" || pathname.startsWith("/project/")
+    pathname === "/" ||
+    pathname.startsWith("/project/") ||
+    pathname.startsWith("/projects/lib/")
+  const primaryProjectsActive = projectsActive && activeLibraryId === "primary"
+  const primaryLibrary = projectLibraries.find((library) => library.id === "primary")
+  const additionalLibraries = projectLibraries.filter(
+    (library) => library.id !== "primary",
+  )
   const toolsActive = pathname.startsWith("/tools")
   const settingsActive = pathname.startsWith("/settings")
   const [manualToolsExpanded, setManualToolsExpanded] = useState(false)
@@ -164,14 +175,30 @@ export const SidebarPanel = memo(function SidebarPanel({
           <SectionLabel>Main</SectionLabel>
           <NavItem
             icon={Folder}
-            label="Projects"
-            active={projectsActive}
+            label={primaryLibrary?.label || "Projects"}
+            active={primaryProjectsActive}
             onClick={() =>
               startTransition(() => {
                 navigate({ to: "/" })
               })
             }
           />
+          {additionalLibraries.map((library) => (
+            <NavItem
+              key={library.id}
+              icon={Folder}
+              label={library.label}
+              active={activeLibraryId === library.id && projectsActive}
+              onClick={() =>
+                startTransition(() => {
+                  navigate({
+                    to: "/projects/lib/$libraryId",
+                    params: { libraryId: library.id },
+                  })
+                })
+              }
+            />
+          ))}
           <NavItem
             icon={Wrench}
             label="Tools"

@@ -72,7 +72,7 @@ function DataRow({ label, children, mono }: DataRowProps) {
       </span>
       <span
         className={cn(
-          "min-w-0 break-words text-[11px] text-foreground",
+          "min-w-0 wrap-break-word text-[11px] text-foreground",
           mono && "font-mono tabular-nums",
         )}
       >
@@ -85,6 +85,7 @@ function DataRow({ label, children, mono }: DataRowProps) {
 export function ProjectDetailPage() {
   const {
     repoByPath,
+    projectLibraries,
     pinnedPathsSet,
     repoNotes,
     repoTags,
@@ -150,16 +151,26 @@ export function ProjectDetailPage() {
   const sync = syncLabel(repo)
   const disk = diskLabel(repo)
   const hasMetadata = tags.length > 0 || !!note
+  const library =
+    projectLibraries.find((entry) => entry.id === repo.orbitLibraryId) ?? null
+  const isPrimaryLibrary = repo.orbitLibraryId === "primary"
 
   return (
     <section className="space-y-5">
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-        <Link
-          to="/"
-          className="hover:text-foreground"
-        >
-          Projects
-        </Link>
+        {isPrimaryLibrary ? (
+          <Link to="/" className="hover:text-foreground">
+            {library?.label ?? "Projects"}
+          </Link>
+        ) : (
+          <Link
+            to="/projects/lib/$libraryId"
+            params={{ libraryId: repo.orbitLibraryId }}
+            className="hover:text-foreground"
+          >
+            {library?.label ?? "Projects"}
+          </Link>
+        )}
         <span className="text-border-strong">/</span>
         {pathParts.map((part, index) => (
           <span

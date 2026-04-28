@@ -6,10 +6,13 @@ import type {
   StatusFilter,
 } from "@/components/orbit/project-filters"
 import type { OpenTarget } from "@/lib/api"
-import type { Preferences, RepoRecord } from "@/types/repo"
+import type { Preferences, ProjectLibrary, RepoRecord } from "@/types/repo"
 
 export type OrbitContextValue = {
   prefs: Preferences
+  projectLibraries: ProjectLibrary[]
+  activeLibraryId: string
+  activeLibrary: ProjectLibrary
   repos: RepoRecord[]
   scanRoot: string | null
   scannedAt: string | null
@@ -39,7 +42,7 @@ export type OrbitContextValue = {
   setStack: (value: string) => void
   setProjectType: (value: ProjectTypeFilter) => void
   setTag: (value: string) => void
-  doScan: () => Promise<void>
+  doScan: (libraryId?: string) => Promise<void>
   saveAllPreferences: (next: Preferences) => Promise<void>
   togglePin: (path: string) => Promise<void>
   openProject: (path: string) => Promise<void>

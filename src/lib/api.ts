@@ -53,14 +53,19 @@ export async function savePreferences(prefs: Preferences): Promise<Preferences> 
   return parseJson<Preferences>(res)
 }
 
+export type ScanRequest = {
+  scanRoot?: string
+  libraryId?: string
+}
+
 /**
  * Runs a filesystem scan for git repositories under the configured root.
  */
-export async function runScan(scanRoot?: string): Promise<ScanResponse> {
+export async function runScan(request: ScanRequest = {}): Promise<ScanResponse> {
   const res = await fetch("/api/scan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(scanRoot ? { scanRoot } : {}),
+    body: JSON.stringify(request),
   })
   const text = await res.text()
   const data = parseResponseBody(text) as unknown as ScanResponse

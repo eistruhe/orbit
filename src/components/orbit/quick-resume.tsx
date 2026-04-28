@@ -129,7 +129,7 @@ export const QuickResume = memo(function QuickResume({
           <p className="max-w-md text-[11px] text-muted-foreground">
             No git repositories were found. Adjust your scan root in config or
             use <span className="text-foreground">Scan projects</span> after
-            adding repos under your Sites folder.
+            adding repos under your configured projects directories.
           </p>
         </div>
       ) : null}

@@ -1,4 +1,4 @@
-import { Outlet, useNavigate } from "@tanstack/react-router"
+import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router"
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
@@ -22,10 +22,11 @@ import {
   savePreferences,
 } from "@/lib/api"
 import { toBrowserRemoteUrl } from "@/lib/remote-url"
-import type { Preferences, RepoRecord } from "@/types/repo"
+import type { Preferences, ProjectLibrary, RepoRecord } from "@/types/repo"
 
 const WEEK_SEC = 7 * 24 * 60 * 60
 const STALL_SEC = 30 * 24 * 60 * 60
+const PRIMARY_LIBRARY_ID = "primary"
 
 function isWebApp(repo: RepoRecord): boolean {
   if (!repo.stack.includes("Node")) return false
@@ -70,17 +71,70 @@ function matchesFilters(
   return true
 }
 
+function normalizePath(value: string): string {
+  return value.replace(/\/+$/, "")
+}
+
+function pathIsWithinRoot(path: string, rootPath: string): boolean {
+  const normalizedPath = normalizePath(path)
+  const normalizedRoot = normalizePath(rootPath)
+  if (!normalizedRoot) return false
+  return (
+    normalizedPath === normalizedRoot ||
+    normalizedPath.startsWith(`${normalizedRoot}/`)
+  )
+}
+
+function buildProjectLibraries(prefs: Preferences | null): ProjectLibrary[] {
+  const primaryPath = prefs?.scanRoot?.trim() ?? ""
+  const primaryLabel = prefs?.primaryScanRootLabel?.trim() || "Projects"
+  const primary: ProjectLibrary = {
+    id: PRIMARY_LIBRARY_ID,
+    label: primaryLabel,
+    path: primaryPath,
+  }
+  if (!prefs) return [primary]
+  const extras = prefs.additionalScanRoots.filter(
+    (library) => library.id !== PRIMARY_LIBRARY_ID,
+  )
+  return [primary, ...extras]
+}
+
+function getLibraryRouteId(pathname: string): string | null {
+  const match = pathname.match(/^\/projects\/lib\/([^/]+)/)
+  if (!match?.[1]) return null
+  try {
+    return decodeURIComponent(match[1])
+  } catch {
+    return null
+  }
+}
+
+function getDetailRoutePath(pathname: string): string | null {
+  const match = pathname.match(/^\/project\/(.+)/)
+  if (!match?.[1]) return null
+  try {
+    return decodeURIComponent(match[1])
+  } catch {
+    return null
+  }
+}
+
 /**
  * Main Orbit layout and data orchestration.
  */
 export function OrbitApp() {
   const navigate = useNavigate()
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
   const [prefs, setPrefs] = useState<Preferences | null>(null)
-  const [repos, setRepos] = useState<RepoRecord[]>([])
-  const [scanRoot, setScanRoot] = useState<string | null>(null)
-  const [scannedAt, setScannedAt] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [reposByLibrary, setReposByLibrary] = useState<Record<string, RepoRecord[]>>({})
+  const [scanMetaByLibrary, setScanMetaByLibrary] = useState<
+    Record<string, { scanRoot: string; scannedAt: string }>
+  >({})
+  const [loadingByLibrary, setLoadingByLibrary] = useState<Record<string, boolean>>({})
+  const [errorByLibrary, setErrorByLibrary] = useState<Record<string, string | null>>({})
 
   const [query, setQuery] = useState("")
   const [ownership, setOwnership] = useState<OwnershipFilter>("all")
@@ -104,21 +158,43 @@ export function OrbitApp() {
     setPrefs(p)
   }, [])
 
-  const doScan = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  const projectLibraries = useMemo(() => buildProjectLibraries(prefs), [prefs])
+
+  const doScan = useCallback(async (libraryId?: string) => {
+    const nextLibraryId = libraryId ?? PRIMARY_LIBRARY_ID
+    const library =
+      projectLibraries.find((entry) => entry.id === nextLibraryId) ??
+      projectLibraries[0]
+    if (!library) return
+
+    setLoadingByLibrary((current) => ({ ...current, [library.id]: true }))
+    setErrorByLibrary((current) => ({ ...current, [library.id]: null }))
     try {
-      const root = prefs?.scanRoot
-      const res = await runScan(root)
-      setRepos(res.repos)
-      setScanRoot(res.scanRoot)
-      setScannedAt(res.scannedAt)
+      const res = await runScan({
+        scanRoot: library.path || undefined,
+        libraryId: library.id,
+      })
+      const responseLibraryId = res.libraryId || library.id
+      setReposByLibrary((current) => ({
+        ...current,
+        [responseLibraryId]: res.repos,
+      }))
+      setScanMetaByLibrary((current) => ({
+        ...current,
+        [responseLibraryId]: {
+          scanRoot: res.scanRoot,
+          scannedAt: res.scannedAt,
+        },
+      }))
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Scan failed")
+      setErrorByLibrary((current) => ({
+        ...current,
+        [library.id]: e instanceof Error ? e.message : "Scan failed",
+      }))
     } finally {
-      setLoading(false)
+      setLoadingByLibrary((current) => ({ ...current, [library.id]: false }))
     }
-  }, [prefs?.scanRoot])
+  }, [projectLibraries])
 
   useEffect(() => {
     void loadPrefs()
@@ -128,14 +204,86 @@ export function OrbitApp() {
   useEffect(() => {
     if (!prefs || initialScanDone.current) return
     initialScanDone.current = true
-    void doScan()
+    void doScan(PRIMARY_LIBRARY_ID)
   }, [prefs, doScan])
+
+  useEffect(() => {
+    const libraryIds = new Set(projectLibraries.map((library) => library.id))
+    setReposByLibrary((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([libraryId]) => libraryIds.has(libraryId)),
+      ),
+    )
+    setScanMetaByLibrary((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([libraryId]) => libraryIds.has(libraryId)),
+      ),
+    )
+    setLoadingByLibrary((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([libraryId]) => libraryIds.has(libraryId)),
+      ),
+    )
+    setErrorByLibrary((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([libraryId]) => libraryIds.has(libraryId)),
+      ),
+    )
+  }, [projectLibraries])
+
+  const allRepos = useMemo(
+    () => Object.values(reposByLibrary).flat(),
+    [reposByLibrary],
+  )
 
   const repoByPath = useMemo(() => {
     const m = new Map<string, RepoRecord>()
-    repos.forEach((r) => m.set(r.path, r))
+    allRepos.forEach((r) => m.set(r.path, r))
     return m
-  }, [repos])
+  }, [allRepos])
+
+  const routeLibraryId = getLibraryRouteId(pathname)
+  const routeDetailPath = getDetailRoutePath(pathname)
+  const detailLibraryId = routeDetailPath
+    ? repoByPath.get(routeDetailPath)?.orbitLibraryId ?? null
+    : null
+  const activeLibraryId = routeLibraryId ?? detailLibraryId ?? PRIMARY_LIBRARY_ID
+  const activeLibrary = useMemo(
+    () =>
+      projectLibraries.find((library) => library.id === activeLibraryId) ??
+      projectLibraries[0],
+    [projectLibraries, activeLibraryId],
+  )
+
+  useEffect(() => {
+    if (!prefs || !activeLibrary) return
+    if (reposByLibrary[activeLibrary.id] || loadingByLibrary[activeLibrary.id]) return
+    void doScan(activeLibrary.id)
+  }, [prefs, activeLibrary, reposByLibrary, loadingByLibrary, doScan])
+
+  useEffect(() => {
+    if (!prefs) return
+    const pending = new Set<string>()
+    for (const pinnedPath of prefs.pinnedPaths) {
+      const matchingLibraries = projectLibraries
+        .filter((library) => pathIsWithinRoot(pinnedPath, library.path))
+        .sort((a, b) => b.path.length - a.path.length)
+      const matchingLibrary = matchingLibraries[0]
+      if (!matchingLibrary || matchingLibrary.id === PRIMARY_LIBRARY_ID) continue
+      if (reposByLibrary[matchingLibrary.id] || loadingByLibrary[matchingLibrary.id]) {
+        continue
+      }
+      pending.add(matchingLibrary.id)
+    }
+    pending.forEach((libraryId) => {
+      void doScan(libraryId)
+    })
+  }, [prefs, projectLibraries, reposByLibrary, loadingByLibrary, doScan])
+
+  const repos = useMemo(
+    () => (activeLibrary ? reposByLibrary[activeLibrary.id] ?? [] : []),
+    [activeLibrary, reposByLibrary],
+  )
 
   const stackOptions = useMemo(() => {
     const s = new Set<string>()
@@ -222,6 +370,16 @@ export function OrbitApp() {
       return now - r.lastCommitEpoch >= STALL_SEC
     }).length
   }, [repos])
+
+  const scanRoot = activeLibrary
+    ? (scanMetaByLibrary[activeLibrary.id]?.scanRoot ??
+      (activeLibrary.path || null))
+    : null
+  const scannedAt = activeLibrary
+    ? (scanMetaByLibrary[activeLibrary.id]?.scannedAt ?? null)
+    : null
+  const loading = activeLibrary ? Boolean(loadingByLibrary[activeLibrary.id]) : false
+  const error = activeLibrary ? (errorByLibrary[activeLibrary.id] ?? null) : null
 
   const togglePin = useCallback(
     async (path: string) => {
@@ -373,6 +531,9 @@ export function OrbitApp() {
 
   const contextValue: OrbitContextValue = {
     prefs,
+    projectLibraries,
+    activeLibraryId: activeLibrary?.id ?? PRIMARY_LIBRARY_ID,
+    activeLibrary: activeLibrary ?? projectLibraries[0],
     repos,
     scanRoot,
     scannedAt,
@@ -426,6 +587,8 @@ export function OrbitApp() {
             </span>
           ) : null}
           <SidebarPanel
+            projectLibraries={projectLibraries}
+            activeLibraryId={activeLibrary?.id ?? PRIMARY_LIBRARY_ID}
             pinned={pinnedRepos}
             recent={recentRepos}
             activeThisWeek={activeThisWeek}

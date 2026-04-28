@@ -19,13 +19,22 @@ export type RepoRecord = {
   isDirty: boolean
   remoteUrl: string | null
   stack: string[]
+  orbitLibraryId: string
   error?: string
+}
+
+export type ProjectLibrary = {
+  id: string
+  label: string
+  path: string
 }
 
 export type Preferences = {
   pinnedPaths: string[]
   recent: { path: string; lastOpenedAt: string }[]
+  primaryScanRootLabel: string
   scanRoot?: string
+  additionalScanRoots: ProjectLibrary[]
   repoNotes: Record<string, string>
   repoTags: Record<string, string[]>
   appSettings: {
@@ -36,6 +45,7 @@ export type Preferences = {
 }
 
 export type ScanResponse = {
+  libraryId: string
   scanRoot: string
   scannedAt: string
   repos: RepoRecord[]

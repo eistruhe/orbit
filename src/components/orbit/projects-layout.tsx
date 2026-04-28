@@ -31,7 +31,16 @@ function StatItem({ label, value, emphasis }: StatItemProps) {
 }
 
 export function ProjectsLayout() {
-  const { repos, scanRoot, scannedAt, loading, doScan, error } = useOrbit()
+  const {
+    repos,
+    scanRoot,
+    scannedAt,
+    loading,
+    doScan,
+    error,
+    activeLibrary,
+    activeLibraryId,
+  } = useOrbit()
 
   const dirtyCount = repos.filter((r) => r.isDirty && !r.error).length
   const errorCount = repos.filter((r) => Boolean(r.error)).length
@@ -42,6 +51,8 @@ export function ProjectsLayout() {
       <header className="app-drag sticky top-0 z-20 flex h-12 items-center justify-between gap-4 border-b border-border bg-sidebar/85 px-3 backdrop-blur-md">
         <div className="flex items-center gap-5 overflow-hidden">
           <StatItem label="Projects" value={repos.length} emphasis />
+          <span className="stat-divider" aria-hidden />
+          <StatItem label="Library" value={activeLibrary.label} />
           <span className="stat-divider" aria-hidden />
           <StatItem
             label="Clean"
@@ -86,21 +97,25 @@ export function ProjectsLayout() {
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => void doScan()}
+          onClick={() => void doScan(activeLibraryId)}
           disabled={loading}
           className="app-no-drag gap-1.5"
         >
           {loading ? (
-            // <Loader2 className="size-3.5 animate-spin" />
-            <DotmCircular4
-              size={16}
-              dotSize={2}
-              speed={1.5}
-            />
+            <>
+              <DotmCircular4
+                size={16}
+                dotSize={2}
+                speed={1.5}
+              />
+              Scanning
+            </>
           ) : (
-            <RefreshCw className="size-3.5" />
+            <>
+              <RefreshCw className="size-3.5" />
+              Scan
+            </>
           )}
-          Scan
         </Button>
       </header>
 

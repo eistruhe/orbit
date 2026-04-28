@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process"
+import { stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { promisify } from "node:util"
@@ -8,8 +9,8 @@ import { Hono } from "hono"
 const execFileAsync = promisify(execFile)
 
 import { fetchOgPreview } from "./og.ts"
-import { openLocalPath, resolvePathUnderRoot } from "./open-path.ts"
-import { readPreferences, writePreferences } from "./prefs.ts"
+import { openLocalPath, resolvePathUnderAllowedRoots } from "./open-path.ts"
+import { readPreferences, writePreferences, type ProjectLibrary } from "./prefs.ts"
 import { scanRepos } from "./scan.ts"
 import { tinifyPaths, validateTinifyApiKey } from "./tinify.ts"
 
@@ -21,6 +22,52 @@ const PORT = (() => {
 
 function defaultScanRoot(): string {
   return process.env.ORBIT_SCAN_ROOT ?? join(homedir(), "Sites")
+}
+
+function expandHomePath(pathValue: string): string {
+  if (pathValue === "~") return homedir()
+  if (pathValue.startsWith("~/")) {
+    return join(homedir(), pathValue.slice(2))
+  }
+  return pathValue
+}
+
+function getPrimaryScanRoot(scanRoot: string | undefined): string {
+  return scanRoot && scanRoot.length > 0
+    ? expandHomePath(scanRoot)
+    : defaultScanRoot()
+}
+
+function parseAdditionalScanRoots(input: unknown): ProjectLibrary[] {
+  if (!Array.isArray(input)) return []
+  return input
+    .filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object")
+    .map((entry) => ({
+      id: typeof entry.id === "string" ? entry.id.trim() : "",
+      label: typeof entry.label === "string" ? entry.label.trim() : "",
+      path: typeof entry.path === "string" ? entry.path.trim() : "",
+    }))
+    .filter((entry) => entry.id.length > 0 && entry.label.length > 0 && entry.path.length > 0)
+}
+
+function getConfiguredLibraries(
+  scanRoot: string | undefined,
+  primaryScanRootLabel: string | undefined,
+  additionalScanRoots: ProjectLibrary[],
+): ProjectLibrary[] {
+  const primary = {
+    id: "primary",
+    label:
+      typeof primaryScanRootLabel === "string" &&
+      primaryScanRootLabel.trim().length > 0
+        ? primaryScanRootLabel.trim()
+        : "Projects",
+    path: getPrimaryScanRoot(scanRoot),
+  }
+  const extras = additionalScanRoots
+    .filter((root) => root.id !== "primary")
+    .map((root) => ({ ...root, path: expandHomePath(root.path) }))
+  return [primary, ...extras]
 }
 
 type BranchGroups = {
@@ -125,10 +172,19 @@ app.put("/api/preferences", async (c) => {
             typeof (r as { lastOpenedAt?: string }).lastOpenedAt === "string",
         )
       : current.recent,
+    primaryScanRootLabel:
+      typeof body.primaryScanRootLabel === "string" &&
+      body.primaryScanRootLabel.trim().length > 0
+        ? body.primaryScanRootLabel.trim()
+        : current.primaryScanRootLabel,
     scanRoot:
       typeof body.scanRoot === "string" && body.scanRoot.length > 0
         ? body.scanRoot
         : current.scanRoot,
+    additionalScanRoots:
+      body.additionalScanRoots !== undefined
+        ? parseAdditionalScanRoots(body.additionalScanRoots)
+        : current.additionalScanRoots,
     repoNotes: noteEntries ? Object.fromEntries(noteEntries) : current.repoNotes,
     repoTags: tagEntries ? Object.fromEntries(tagEntries) : current.repoTags,
     appSettings: nextAppSettings,
@@ -140,14 +196,58 @@ app.put("/api/preferences", async (c) => {
 app.post("/api/scan", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const prefs = await readPreferences()
+  const libraries = getConfiguredLibraries(
+    prefs.scanRoot,
+    prefs.primaryScanRootLabel,
+    prefs.additionalScanRoots,
+  )
   const fromBody =
     body &&
     typeof body === "object" &&
     typeof (body as { scanRoot?: string }).scanRoot === "string"
       ? (body as { scanRoot: string }).scanRoot
       : undefined
-  const scanRoot = fromBody ?? prefs.scanRoot ?? defaultScanRoot()
+  const fromLibraryId =
+    body &&
+    typeof body === "object" &&
+    typeof (body as { libraryId?: string }).libraryId === "string"
+      ? (body as { libraryId: string }).libraryId
+      : undefined
+  const selectedLibrary = fromLibraryId
+    ? libraries.find((library) => library.id === fromLibraryId)
+    : undefined
+  const scanRoot = expandHomePath(
+    fromBody ?? selectedLibrary?.path ?? getPrimaryScanRoot(prefs.scanRoot),
+  )
+  const libraryId = selectedLibrary?.id ?? fromLibraryId ?? "primary"
   const scannedAt = new Date().toISOString()
+
+  try {
+    const st = await stat(scanRoot)
+    if (!st.isDirectory()) {
+      return c.json(
+        {
+          error: `Scan root is not a directory: ${scanRoot}`,
+          libraryId,
+          scanRoot,
+          scannedAt,
+          repos: [],
+        },
+        400,
+      )
+    }
+  } catch {
+    return c.json(
+      {
+        error: `Scan root does not exist: ${scanRoot}`,
+        libraryId,
+        scanRoot,
+        scannedAt,
+        repos: [],
+      },
+      400,
+    )
+  }
 
   let gitAvailable = true
   try {
@@ -160,6 +260,7 @@ app.post("/api/scan", async (c) => {
     return c.json(
       {
         error: "git CLI not found on PATH",
+        libraryId,
         scanRoot,
         scannedAt,
         repos: [],
@@ -168,8 +269,8 @@ app.post("/api/scan", async (c) => {
     )
   }
 
-  const repos = await scanRepos(scanRoot)
-  return c.json({ scanRoot, scannedAt, repos })
+  const repos = await scanRepos(scanRoot, libraryId)
+  return c.json({ libraryId, scanRoot, scannedAt, repos })
 })
 
 app.post("/api/tinify", async (c) => {
@@ -252,10 +353,14 @@ app.post("/api/open", async (c) => {
   }
 
   const prefs = await readPreferences()
-  const scanRoot = prefs.scanRoot ?? defaultScanRoot()
+  const allowedRoots = getConfiguredLibraries(
+    prefs.scanRoot,
+    prefs.primaryScanRootLabel,
+    prefs.additionalScanRoots,
+  ).map((library) => library.path)
 
   try {
-    const safe = await resolvePathUnderRoot(pathStr, scanRoot)
+    const safe = await resolvePathUnderAllowedRoots(pathStr, allowedRoots)
     await openLocalPath(safe, target)
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
@@ -284,10 +389,14 @@ app.get("/api/repo/branches", async (c) => {
   }
 
   const prefs = await readPreferences()
-  const scanRoot = prefs.scanRoot ?? defaultScanRoot()
+  const allowedRoots = getConfiguredLibraries(
+    prefs.scanRoot,
+    prefs.primaryScanRootLabel,
+    prefs.additionalScanRoots,
+  ).map((library) => library.path)
   let safePath: string
   try {
-    safePath = await resolvePathUnderRoot(pathStr, scanRoot)
+    safePath = await resolvePathUnderAllowedRoots(pathStr, allowedRoots)
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     return c.json({ error: message }, 400)
