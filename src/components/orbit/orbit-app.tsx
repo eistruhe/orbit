@@ -1,23 +1,18 @@
-import { Loader2, RefreshCw } from "lucide-react"
+import { Outlet, useNavigate } from "@tanstack/react-router"
+import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Route, Routes, useLocation, useNavigate } from "react-router-dom"
 
 import { MetadataDialog } from "@/components/orbit/metadata-dialog"
-import { ProjectDetailPage } from "@/components/orbit/project-detail-page"
-import { SettingsPage } from "@/components/orbit/settings-page"
+import {
+  OrbitContext,
+  type OrbitContextValue,
+} from "@/components/orbit/orbit-context"
 import { SidebarPanel } from "@/components/orbit/sidebar-panel"
-import { ProjectFilters } from "@/components/orbit/project-filters"
-import { TinifyPage } from "@/components/orbit/tools/tinify-page"
-import { ToolsHubPage } from "@/components/orbit/tools/tools-hub-page"
 import type {
   OwnershipFilter,
   ProjectTypeFilter,
   StatusFilter,
 } from "@/components/orbit/project-filters"
-import { ProjectTable } from "@/components/orbit/project-table"
-import { QuickResume } from "@/components/orbit/quick-resume"
-import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import {
   type OpenTarget,
@@ -80,7 +75,6 @@ function matchesFilters(
  */
 export function OrbitApp() {
   const navigate = useNavigate()
-  const location = useLocation()
   const [prefs, setPrefs] = useState<Preferences | null>(null)
   const [repos, setRepos] = useState<RepoRecord[]>([])
   const [scanRoot, setScanRoot] = useState<string | null>(null)
@@ -262,7 +256,10 @@ export function OrbitApp() {
   const openProject = useCallback(
     async (path: string) => {
       await recordOpen(path)
-      navigate(`/project/${encodeURIComponent(path)}`)
+      navigate({
+        to: "/project/$encodedPath",
+        params: { encodedPath: encodeURIComponent(path) },
+      })
     },
     [recordOpen, navigate],
   )
@@ -374,171 +371,84 @@ export function OrbitApp() {
     )
   }
 
+  const contextValue: OrbitContextValue = {
+    prefs,
+    repos,
+    scanRoot,
+    scannedAt,
+    loading,
+    error,
+    query,
+    ownership,
+    status,
+    stack,
+    projectType,
+    tag,
+    stackOptions,
+    tagOptions,
+    filtered,
+    quickResume,
+    pinnedPathsSet,
+    pinnedRepos,
+    recentRepos,
+    activeThisWeek,
+    stalled,
+    repoByPath,
+    repoNotes,
+    repoTags,
+    setQuery,
+    setOwnership,
+    setStatus,
+    setStack,
+    setProjectType,
+    setTag,
+    doScan,
+    saveAllPreferences,
+    togglePin,
+    openProject,
+    openExternal,
+    openRemote,
+    openMetadataDialog,
+  }
+
   return (
-    <TooltipProvider delay={200}>
-      <div className="relative flex min-h-svh items-start text-foreground">
-        {actionFeedback ? (
-          <span
-            role="status"
-            aria-live="polite"
-            className="fixed bottom-6 left-1/2 z-50 max-w-[min(90vw,28rem)] -translate-x-1/2 border border-border bg-card px-4 py-2 text-center text-xs text-foreground shadow-sm"
-          >
-            {actionFeedback}
-          </span>
+    <OrbitContext.Provider value={contextValue}>
+      <TooltipProvider delay={200}>
+        <div className="relative flex min-h-svh items-start text-foreground">
+          {actionFeedback ? (
+            <span
+              role="status"
+              aria-live="polite"
+              className="fixed bottom-6 left-1/2 z-50 max-w-[min(90vw,28rem)] -translate-x-1/2 border border-border bg-card px-4 py-2 text-center text-xs text-foreground shadow-sm"
+            >
+              {actionFeedback}
+            </span>
+          ) : null}
+          <SidebarPanel
+            pinned={pinnedRepos}
+            recent={recentRepos}
+            activeThisWeek={activeThisWeek}
+            stalled={stalled}
+            onPick={openProject}
+            onOpenExternal={openExternal}
+          />
+
+          <main className="flex min-w-0 flex-1 flex-col">
+            <Outlet />
+          </main>
+        </div>
+        {metaDialogPath ? (
+          <MetadataDialog
+            path={metaDialogPath}
+            repoName={repoByPath.get(metaDialogPath)?.name ?? metaDialogPath}
+            initialTags={prefs.repoTags?.[metaDialogPath]?.join(", ") ?? ""}
+            initialNote={prefs.repoNotes?.[metaDialogPath] ?? ""}
+            saving={metaSaving}
+            onClose={closeMetadataDialog}
+            onSave={saveMetadata}
+          />
         ) : null}
-        <SidebarPanel
-          pinned={pinnedRepos}
-          recent={recentRepos}
-          activeThisWeek={activeThisWeek}
-          stalled={stalled}
-          onPick={openProject}
-          onOpenExternal={openExternal}
-        />
-
-        <main className="flex min-w-0 flex-1 flex-col">
-          {location.pathname === "/" || location.pathname.startsWith("/project/") ? (
-            <header className="app-drag sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-border px-3 h-12 bg-sidebar/30 dark:bg-sidebar/70 backdrop-blur-lg">
-              <div>
-                <p className="text-xs text-muted-foreground">
-                  {repos.length} projects found
-                  {scanRoot ? (
-                    <span className="ml-2 text-[10px] opacity-80">
-                      · {scanRoot}
-                    </span>
-                  ) : null}
-                  {scannedAt ? (
-                    <span className="ml-2 text-[10px] opacity-80">
-                      · scanned {new Date(scannedAt).toLocaleString()}
-                    </span>
-                  ) : null}
-                </p>
-              </div>
-              <Button
-                type="button"
-                onClick={() => void doScan()}
-                disabled={loading}
-                className="app-no-drag gap-2"
-              >
-                {loading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="size-4" />
-                )}
-                Scan projects
-              </Button>
-            </header>
-          ) : null}
-
-          {location.pathname.startsWith("/tools") ? (
-            <header className="app-drag sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-border px-3 h-12 bg-sidebar/30 dark:bg-sidebar/70 backdrop-blur-lg">
-              <h2 className="text-xl font-semibold">
-                Tools{" "}
-                <span className="text-muted-foreground">
-                  {location.pathname.split("/")[2]
-                    ? location.pathname.split("/")[2]
-                        .replace(/-/g, " ")
-                        .replace(/\b\w/g, (l) => l.toUpperCase())
-                    : ""}
-                </span>
-              </h2>
-
-            </header>
-          ) : null}
-
-          <div className="flex flex-1 flex-col gap-8 px-3 py-8">
-            {error && (location.pathname === "/" || location.pathname.startsWith("/project/")) ? (
-              <p className="border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {error}
-              </p>
-            ) : null}
-
-            <Routes>
-              <Route
-                path="/"
-                element={
-                  <>
-                    <QuickResume
-                      repos={quickResume}
-                      scanLoading={loading}
-                      pinnedPaths={pinnedPathsSet}
-                      onTogglePin={togglePin}
-                      onOpen={openProject}
-                      onOpenExternal={openExternal}
-                      onOpenRemote={openRemote}
-                      repoNotes={repoNotes}
-                      repoTags={repoTags}
-                      onEditMetadata={openMetadataDialog}
-                    />
-
-                    <Separator />
-
-                    <ProjectFilters
-                      query={query}
-                      onQueryChange={setQuery}
-                      ownership={ownership}
-                      onOwnershipChange={setOwnership}
-                      status={status}
-                      onStatusChange={setStatus}
-                      stack={stack}
-                      stackOptions={stackOptions}
-                      onStackChange={setStack}
-                      projectType={projectType}
-                      onProjectTypeChange={setProjectType}
-                      tag={tag}
-                      tagOptions={tagOptions}
-                      onTagChange={setTag}
-                    />
-
-                    <ProjectTable
-                      repos={filtered}
-                      pinnedPaths={pinnedPathsSet}
-                      onTogglePin={togglePin}
-                      onOpen={openProject}
-                      onOpenExternal={openExternal}
-                      onOpenRemote={openRemote}
-                      repoNotes={repoNotes}
-                      repoTags={repoTags}
-                      onEditMetadata={openMetadataDialog}
-                    />
-                  </>
-                }
-              />
-              <Route
-                path="/project/:encodedPath"
-                element={
-                  <ProjectDetailPage
-                    repoByPath={repoByPath}
-                    pinnedPaths={pinnedPathsSet}
-                    repoNotes={repoNotes}
-                    repoTags={repoTags}
-                    onTogglePin={togglePin}
-                    onOpenExternal={openExternal}
-                    onOpenRemote={openRemote}
-                    onEditMetadata={openMetadataDialog}
-                  />
-                }
-              />
-              <Route path="/tools" element={<ToolsHubPage />} />
-              <Route path="/tools/tinify" element={<TinifyPage />} />
-              <Route
-                path="/settings"
-                element={<SettingsPage prefs={prefs} onSave={saveAllPreferences} />}
-              />
-            </Routes>
-          </div>
-        </main>
-      </div>
-      {metaDialogPath ? (
-        <MetadataDialog
-          path={metaDialogPath}
-          repoName={repoByPath.get(metaDialogPath)?.name ?? metaDialogPath}
-          initialTags={prefs.repoTags?.[metaDialogPath]?.join(", ") ?? ""}
-          initialNote={prefs.repoNotes?.[metaDialogPath] ?? ""}
-          saving={metaSaving}
-          onClose={closeMetadataDialog}
-          onSave={saveMetadata}
-        />
-      ) : null}
-    </TooltipProvider>
+      </TooltipProvider>
+    </OrbitContext.Provider>
   )
 }

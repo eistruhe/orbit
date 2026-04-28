@@ -11,32 +11,21 @@ import {
   Tag,
   User,
 } from "lucide-react"
+import { Link, useParams } from "@tanstack/react-router"
 import { useEffect, useMemo, useState } from "react"
-import { Link, useParams } from "react-router-dom"
 
+import { useOrbit } from "@/components/orbit/orbit-context"
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { StatusBadge } from "@/components/orbit/status-badge"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import type { OpenTarget, RepoBranchesResponse } from "@/lib/api"
+import type { RepoBranchesResponse } from "@/lib/api"
 import { fetchRepoBranches } from "@/lib/api"
 import { diskLabel, syncLabel } from "@/lib/repo-facts"
 import { formatRelativeFromIso } from "@/lib/time"
 import { cn } from "@/lib/utils"
-import type { RepoRecord } from "@/types/repo"
-
-type ProjectDetailPageProps = {
-  repoByPath: Map<string, RepoRecord>
-  pinnedPaths: Set<string>
-  repoNotes: Record<string, string>
-  repoTags: Record<string, string[]>
-  onTogglePin: (path: string) => void
-  onOpenExternal: (path: string, target: OpenTarget) => void
-  onOpenRemote: (remoteUrl: string | null) => void
-  onEditMetadata: (path: string) => void
-}
 
 function decodeProjectPath(value: string | undefined): string | null {
   if (!value) return null
@@ -67,17 +56,18 @@ function DetailRow({
   )
 }
 
-export function ProjectDetailPage({
-  repoByPath,
-  pinnedPaths,
-  repoNotes,
-  repoTags,
-  onTogglePin,
-  onOpenExternal,
-  onOpenRemote,
-  onEditMetadata,
-}: ProjectDetailPageProps) {
-  const { encodedPath } = useParams()
+export function ProjectDetailPage() {
+  const {
+    repoByPath,
+    pinnedPathsSet,
+    repoNotes,
+    repoTags,
+    togglePin,
+    openExternal,
+    openRemote,
+    openMetadataDialog,
+  } = useOrbit()
+  const { encodedPath } = useParams({ from: "/projects-layout/project/$encodedPath" })
   const decodedPath = useMemo(
     () => decodeProjectPath(encodedPath),
     [encodedPath],
@@ -91,23 +81,25 @@ export function ProjectDetailPage({
   useEffect(() => {
     if (!repo) return
     let cancelled = false
-    setBranchesLoading(true)
-    setBranchesError(null)
-    setBranches(null)
-    void fetchRepoBranches(repo.path)
-      .then((result) => {
+    const loadBranches = async () => {
+      setBranchesLoading(true)
+      setBranchesError(null)
+      setBranches(null)
+      try {
+        const result = await fetchRepoBranches(repo.path)
         if (cancelled) return
         setBranches(result)
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         if (cancelled) return
         const message = error instanceof Error ? error.message : "Could not load branches"
         setBranchesError(message)
-      })
-      .finally(() => {
-        if (cancelled) return
-        setBranchesLoading(false)
-      })
+      } finally {
+        if (!cancelled) {
+          setBranchesLoading(false)
+        }
+      }
+    }
+    void loadBranches()
     return () => {
       cancelled = true
     }
@@ -170,31 +162,33 @@ export function ProjectDetailPage({
             variant="ghost"
             size="sm"
             className="h-7 px-2"
-            onClick={() => onTogglePin(repo.path)}
+            onClick={() => void togglePin(repo.path)}
           >
             <Pin
               className={cn(
                 "size-3.5",
-                pinnedPaths.has(repo.path) ? "text-highlight" : "text-muted-foreground",
+                pinnedPathsSet.has(repo.path)
+                  ? "text-highlight"
+                  : "text-muted-foreground",
               )}
             />
-            {pinnedPaths.has(repo.path) ? "Pinned" : "Pin"}
+            {pinnedPathsSet.has(repo.path) ? "Pinned" : "Pin"}
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="h-7 px-2"
-            onClick={() => onEditMetadata(repo.path)}
+            onClick={() => openMetadataDialog(repo.path)}
           >
             <Pencil className="size-3.5 text-muted-foreground" />
             Meta
           </Button>
           <OpenTargetButtons
             path={repo.path}
-            onOpenExternal={onOpenExternal}
+            onOpenExternal={openExternal}
             remoteUrl={repo.remoteUrl}
-            onOpenRemote={() => onOpenRemote(repo.remoteUrl)}
+            onOpenRemote={() => openRemote(repo.remoteUrl)}
           />
         </div>
       </div>

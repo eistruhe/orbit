@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Folder, Settings, Wrench } from "lucide-react"
-import { memo, useEffect, useState } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useNavigate, useRouterState } from "@tanstack/react-router"
+import { memo, startTransition, useState } from "react"
 
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -38,18 +38,17 @@ export const SidebarPanel = memo(function SidebarPanel({
   onOpenExternal,
 }: SidebarPanelProps) {
   const navigate = useNavigate()
-  const location = useLocation()
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
   const projectsActive =
-    location.pathname === "/" || location.pathname.startsWith("/project/")
-  const toolsActive = location.pathname.startsWith("/tools")
-  const settingsActive = location.pathname.startsWith("/settings")
-  const [toolsExpanded, setToolsExpanded] = useState(toolsActive)
-
-  useEffect(() => {
-    if (toolsActive) {
-      setToolsExpanded(true)
-    }
-  }, [toolsActive])
+    pathname === "/" || pathname.startsWith("/project/")
+  const toolsActive = pathname.startsWith("/tools")
+  const settingsActive = pathname.startsWith("/settings")
+  const [manualToolsExpanded, setManualToolsExpanded] = useState(false)
+  const toolsExpanded = toolsActive || manualToolsExpanded
+  const isToolsHub =
+    pathname === "/tools" || pathname === "/tools/"
 
   return (
     <aside className="sticky top-0 z-20 flex h-svh w-60 shrink-0 flex-col overflow-y-auto border-r border-border bg-sidebar text-sidebar-foreground">
@@ -63,7 +62,11 @@ export const SidebarPanel = memo(function SidebarPanel({
         <div className="flex flex-col gap-y-1">
           <button
             type="button"
-            onClick={() => navigate("/")}
+            onClick={() => {
+              startTransition(() => {
+                navigate({ to: "/" })
+              })
+            }}
             className={cn(
               "flex items-center gap-2 px-2 py-1.5 text-left text-sm font-medium uppercase tracking-wider",
               projectsActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
@@ -75,12 +78,19 @@ export const SidebarPanel = memo(function SidebarPanel({
           <button
             type="button"
             onClick={() => {
-              if (!toolsActive) {
-                navigate("/tools")
-                setToolsExpanded(true)
-                return
-              }
-              setToolsExpanded((current) => !current)
+              startTransition(() => {
+                if (!toolsActive) {
+                  navigate({ to: "/tools" })
+                  setManualToolsExpanded(true)
+                  return
+                }
+                // On a nested tools route (e.g. Tinify), go back to the tools hub instead of toggling only.
+                if (!isToolsHub) {
+                  navigate({ to: "/tools" })
+                  return
+                }
+                setManualToolsExpanded((current) => !current)
+              })
             }}
             className={cn(
               "flex items-center justify-between gap-2 px-2 py-1.5 text-left text-sm font-medium uppercase tracking-wider hover:bg-sidebar-accent",
@@ -100,10 +110,14 @@ export const SidebarPanel = memo(function SidebarPanel({
           {toolsExpanded ? (
             <button
               type="button"
-              onClick={() => navigate("/tools/tinify")}
+              onClick={() => {
+                startTransition(() => {
+                  navigate({ to: "/tools/tinify" })
+                })
+              }}
               className={cn(
                 "ml-6 flex items-center gap-2 px-2 py-1.5 text-left text-sm",
-                location.pathname === "/tools/tinify"
+                pathname === "/tools/tinify"
                   ? "bg-sidebar-accent"
                   : "hover:bg-sidebar-accent",
               )}
@@ -113,7 +127,11 @@ export const SidebarPanel = memo(function SidebarPanel({
           ) : null}
           <button
             type="button"
-            onClick={() => navigate("/settings")}
+            onClick={() => {
+              startTransition(() => {
+                navigate({ to: "/settings" })
+              })
+            }}
             className={cn(
               "flex items-center gap-2 px-2 py-1.5 text-left text-sm font-medium uppercase tracking-wider hover:bg-sidebar-accent",
               settingsActive ? "bg-sidebar-accent" : "",

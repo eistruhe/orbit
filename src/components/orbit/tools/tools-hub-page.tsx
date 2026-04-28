@@ -1,5 +1,5 @@
 import { Wrench } from "lucide-react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "@tanstack/react-router"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -15,13 +15,6 @@ export function ToolsHubPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold">Tools</h2>
-        <p className="text-sm text-muted-foreground">
-          Orbit tools for local project workflows.
-        </p>
-      </div>
-
       <Card className="max-w-3xl">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -33,7 +26,7 @@ export function ToolsHubPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button type="button" onClick={() => navigate("/tools/tinify")}>
+          <Button type="button" onClick={() => navigate({ to: "/tools/tinify" })}>
             Open Tinify
           </Button>
         </CardContent>

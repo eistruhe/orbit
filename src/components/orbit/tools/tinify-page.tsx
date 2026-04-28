@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/card"
 import { formatBytes } from "@/lib/format-size"
 import { tinifyPaths, type TinifyResult } from "@/lib/api"
-import { Field, FieldLabel } from "@/components/ui/field"
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
 import { Checkbox } from "@/components/ui/checkbox"
 
 const ACCEPTED_EXTENSIONS = [".png", ".jpg", ".jpeg"]
@@ -231,10 +231,16 @@ export function TinifyPage() {
             }}
           />
 
-          <Field orientation="horizontal" className="w-auto">
-            <Checkbox id="replaceOriginal" checked={replaceOriginal} onCheckedChange={(checked) => setReplaceOriginal(Boolean(checked))} />
-            <FieldLabel htmlFor="replaceOriginal">Replace original image</FieldLabel>
-          </Field>
+          <FieldGroup className="max-w-xs">
+            <FieldLabel>
+              <Field orientation="horizontal">
+                <Checkbox id="replaceOriginal" checked={replaceOriginal} onCheckedChange={(checked) => setReplaceOriginal(Boolean(checked))} />
+                <FieldContent>
+                  <FieldTitle>Replace original image</FieldTitle>
+                </FieldContent>
+              </Field>
+            </FieldLabel>
+          </FieldGroup>
 
           <div className="flex items-center gap-2">
             <Button

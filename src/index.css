@@ -54,7 +54,7 @@
 :root {
   --radius: 0.625rem;
   --highlight: #F9C9A4;
-  --background: oklch(1 0 0);
+  --background: oklch(0.97 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -135,7 +135,7 @@
   body {
     @apply bg-background text-foreground;
     font-family: "Geist Mono Variable", ui-monospace, monospace;
-    background: radial-gradient(circle, var(--dot-color) 1px, transparent 1px) 0 0 / 16px 16px, var(--background);
+    /* background: radial-gradient(circle, var(--dot-color) 1px, transparent 1px) 0 0 / 16px 16px, var(--background); */
   }
   html {
     @apply bg-background font-mono;

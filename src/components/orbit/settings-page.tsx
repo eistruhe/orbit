@@ -1,24 +1,18 @@
 import { useEffect, useState } from "react"
 
+import { useOrbit } from "@/components/orbit/orbit-context"
 import { validateTinifyKey } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import type { Preferences } from "@/types/repo"
-
-type SettingsPageProps = {
-  prefs: Preferences
-  onSave: (next: Preferences) => Promise<void>
-}
-
-export function SettingsPage({ prefs, onSave }: SettingsPageProps) {
+export function SettingsPage() {
+  const { prefs, saveAllPreferences } = useOrbit()
   const [tinifyApiKey, setTinifyApiKey] = useState(
     prefs.appSettings.tinify?.apiKey ?? "",
   )
@@ -39,7 +33,7 @@ export function SettingsPage({ prefs, onSave }: SettingsPageProps) {
     try {
       setSaving(true)
       setError(null)
-      await onSave({
+      await saveAllPreferences({
         ...prefs,
         appSettings: {
           ...prefs.appSettings,
@@ -92,13 +86,6 @@ export function SettingsPage({ prefs, onSave }: SettingsPageProps) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold">Settings</h2>
-        <p className="text-sm text-muted-foreground">
-          App-wide configuration. More settings will be added here over time.
-        </p>
-      </div>
-
       <Card className="max-w-3xl">
         <CardHeader>
           <CardTitle>TinyPNG API key</CardTitle>
