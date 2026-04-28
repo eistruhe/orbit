@@ -1,8 +1,15 @@
 import { Outlet, useMatchRoute } from "@tanstack/react-router"
 
+const TOOL_SUBTITLES = [
+  { to: "/tools/tinify", label: "Tinify" },
+  { to: "/tools/px-to-rem", label: "Px ↔ rem" },
+  { to: "/tools/open-graph", label: "Open graph" },
+] as const
+
 export function ToolsLayout() {
   const matchRoute = useMatchRoute()
-  const subtitle = matchRoute({ to: "/tools/tinify" }) ? "Tinify" : ""
+  const subtitle =
+    TOOL_SUBTITLES.find((entry) => matchRoute({ to: entry.to }))?.label ?? ""
 
   return (
     <>

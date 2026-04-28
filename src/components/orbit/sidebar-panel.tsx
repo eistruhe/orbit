@@ -215,6 +215,24 @@ export const SidebarPanel = memo(function SidebarPanel({
                   })
                 }
               />
+              <SubNavItem
+                label="Px ↔ rem"
+                active={pathname === "/tools/px-to-rem"}
+                onClick={() =>
+                  startTransition(() => {
+                    navigate({ to: "/tools/px-to-rem" })
+                  })
+                }
+              />
+              <SubNavItem
+                label="Open graph"
+                active={pathname === "/tools/open-graph"}
+                onClick={() =>
+                  startTransition(() => {
+                    navigate({ to: "/tools/open-graph" })
+                  })
+                }
+              />
             </SubNavRail>
           ) : null}
         </div>
@@ -247,7 +265,7 @@ export const SidebarPanel = memo(function SidebarPanel({
                         path={r.path}
                         onOpenExternal={onOpenExternal}
                         size="compact"
-                        className="shrink-0 opacity-0 transition-opacity group-hover/pin:opacity-100"
+                        className="shrink-0 transition-opacity"
                       />
                     </div>
                   </li>

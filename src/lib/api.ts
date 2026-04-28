@@ -151,6 +151,37 @@ export async function tinifyPaths(
   return data
 }
 
+export type OgRawMetaItem = { tag: string; value: string }
+
+export type OgPreviewData = {
+  title: string | null
+  description: string | null
+  image: string | null
+  siteName: string | null
+  url: string
+  favicon: string | null
+  raw: OgRawMetaItem[]
+}
+
+/**
+ * Fetches Open Graph metadata for the given URL via the local API.
+ */
+export async function fetchOgPreview(url: string): Promise<OgPreviewData> {
+  const params = new URLSearchParams({ url })
+  const res = await fetch(`/api/og?${params.toString()}`)
+  const text = await res.text()
+  const data = parseResponseBody(text) as unknown as OgPreviewData & {
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Could not load preview",
+    )
+  }
+  return data
+}
+
 export async function validateTinifyKey(
   apiKey: string,
 ): Promise<TinifyKeyValidation> {

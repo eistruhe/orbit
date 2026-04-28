@@ -1,4 +1,4 @@
-import { Loader2, RefreshCw } from "lucide-react"
+import { RefreshCw } from "lucide-react"
 import { Outlet } from "@tanstack/react-router"
 
 import { useOrbit } from "@/components/orbit/orbit-context"

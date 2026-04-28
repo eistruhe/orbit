@@ -1,4 +1,9 @@
-import { ChevronRight, Image as ImageIcon } from "lucide-react"
+import {
+  ArrowLeftRight,
+  ChevronRight,
+  Image as ImageIcon,
+  Link as LinkIcon,
+} from "lucide-react"
 import { useNavigate } from "@tanstack/react-router"
 
 const tools = [
@@ -8,6 +13,22 @@ const tools = [
     description: "Compress PNG and JPG images via the TinyPNG API.",
     icon: ImageIcon,
     target: "/tools/tinify" as const,
+  },
+  {
+    id: "px-to-rem",
+    name: "Px ↔ rem",
+    description:
+      "Convert between pixels and rem with a configurable root font size.",
+    icon: ArrowLeftRight,
+    target: "/tools/px-to-rem" as const,
+  },
+  {
+    id: "open-graph",
+    name: "Open graph",
+    description:
+      "Preview Open Graph, Twitter, and meta tags for any public URL.",
+    icon: LinkIcon,
+    target: "/tools/open-graph" as const,
   },
 ]
 

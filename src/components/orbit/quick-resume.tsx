@@ -1,4 +1,4 @@
-import { Loader2, Pencil, Pin } from "lucide-react"
+import { Pencil, Pin } from "lucide-react"
 import { memo } from "react"
 
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"

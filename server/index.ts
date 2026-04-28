@@ -7,6 +7,7 @@ import { Hono } from "hono"
 
 const execFileAsync = promisify(execFile)
 
+import { fetchOgPreview } from "./og.ts"
 import { openLocalPath, resolvePathUnderRoot } from "./open-path.ts"
 import { readPreferences, writePreferences } from "./prefs.ts"
 import { scanRepos } from "./scan.ts"
@@ -265,6 +266,15 @@ app.post("/api/open", async (c) => {
     status: 200,
     headers: { "Content-Type": "application/json; charset=utf-8" },
   })
+})
+
+app.get("/api/og", async (c) => {
+  const target = c.req.query("url")
+  const result = await fetchOgPreview(target)
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400 | 500 | 502 | 504)
+  }
+  return c.json(result.data)
 })
 
 app.get("/api/repo/branches", async (c) => {
