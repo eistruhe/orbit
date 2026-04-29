@@ -220,18 +220,35 @@ function ensureReleaseTag(tagName, message) {
 }
 
 function pushTag(remote, tagName) {
-  const result = spawnSync("git", ["push", remote, tagName], {
+  const pipeOptions = {
+    cwd: projectRoot,
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+    env: process.env,
+  }
+  let result = spawnSync("git", ["push", remote, tagName], pipeOptions)
+  if ((result.status ?? 1) === 0) return
+
+  const out = `${result.stderr || ""}${result.stdout || ""}`
+  const remoteTagFromPublish =
+    /already exists|\[rejected\]|\b tag \b.*already|Updates were rejected/i.test(out)
+
+  if (!remoteTagFromPublish) {
+    process.stderr.write(out)
+    throw new Error(`git push ${remote} ${tagName} failed (${result.status ?? "unknown"})`)
+  }
+
+  console.log(
+    `\nRemote already has ${tagName} (electron-builder creates it during publish). Updating it to the local release commit.`,
+  )
+  result = spawnSync("git", ["push", "--force", remote, tagName], {
     cwd: projectRoot,
     stdio: "inherit",
     env: process.env,
   })
   if (result.error) throw result.error
-  if (result.status !== 0) {
-    console.error(
-      `\nTag push failed. If ${tagName} exists on the remote at a different commit, run:\n` +
-        `  git push --force-with-lease ${remote} ${tagName}\n`,
-    )
-    throw new Error(`git push ${remote} ${tagName} failed (${result.status ?? "unknown"})`)
+  if ((result.status ?? 1) !== 0) {
+    throw new Error(`git push --force ${remote} ${tagName} failed (${result.status ?? "unknown"})`)
   }
 }
 
