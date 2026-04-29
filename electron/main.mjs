@@ -279,12 +279,29 @@ function createMainWindow(preloadPath) {
   })
 
   // Prevent accidental app reload shortcuts in production-style desktop usage.
+  // With a `before-input-event` listener attached, menu accelerators (e.g. Close ⌘W)
+  // must be re-enabled while Command/Control is held. See Electron `setIgnoreMenuShortcuts`.
   mainWindow.webContents.on("before-input-event", (event, input) => {
+    mainWindow.webContents.setIgnoreMenuShortcuts(!input.control && !input.meta)
+
     const key = typeof input.key === "string" ? input.key.toLowerCase() : ""
     const isReloadShortcut =
       key === "f5" || (key === "r" && (Boolean(input.meta) || Boolean(input.control)))
     if (isReloadShortcut) {
       event.preventDefault()
+      return
+    }
+
+    const isCloseWindowShortcut =
+      input.type === "keyDown" &&
+      !input.isComposing &&
+      key === "w" &&
+      (Boolean(input.meta) || Boolean(input.control)) &&
+      !input.alt &&
+      !input.shift
+    if (isCloseWindowShortcut) {
+      event.preventDefault()
+      mainWindow?.close()
     }
   })
 
