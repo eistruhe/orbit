@@ -1,5 +1,7 @@
 import {
+  CheckCircle2,
   Clock,
+  Download,
   GitBranch,
   GitCommit,
   HardDrive,
@@ -9,17 +11,23 @@ import {
   Pin,
   RefreshCw,
   Tag,
+  Trash2,
   User,
 } from "lucide-react"
 import { Link, useParams } from "@tanstack/react-router"
 import { useEffect, useMemo, useState } from "react"
 
+import { DeleteNodeModulesDialog } from "@/components/orbit/delete-node-modules-dialog"
 import { useOrbit } from "@/components/orbit/orbit-context"
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { StatusBadge } from "@/components/orbit/status-badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import type { RepoBranchesResponse } from "@/lib/api"
-import { fetchRepoBranches } from "@/lib/api"
+import {
+  deleteRepoNodeModules,
+  fetchRepoBranches,
+  gitFetchRepo,
+} from "@/lib/api"
 import { diskLabel, syncLabel } from "@/lib/repo-facts"
 import { formatRelativeFromIso } from "@/lib/time"
 import { cn } from "@/lib/utils"
@@ -93,6 +101,7 @@ export function ProjectDetailPage() {
     openExternal,
     openRemote,
     openMetadataDialog,
+    doScan,
   } = useOrbit()
   const { encodedPath } = useParams({ from: "/projects-layout/project/$encodedPath" })
   const decodedPath = useMemo(
@@ -104,6 +113,13 @@ export function ProjectDetailPage() {
   const [branches, setBranches] = useState<RepoBranchesResponse | null>(null)
   const [branchesLoading, setBranchesLoading] = useState(false)
   const [branchesError, setBranchesError] = useState<string | null>(null)
+  const [branchReloadKey, setBranchReloadKey] = useState(0)
+  const [deletingNodeModules, setDeletingNodeModules] = useState(false)
+  const [gitFetching, setGitFetching] = useState(false)
+  const [repoActionMessage, setRepoActionMessage] = useState<string | null>(null)
+  const [repoActionError, setRepoActionError] = useState<string | null>(null)
+  const [deleteNodeModulesDialogOpen, setDeleteNodeModulesDialogOpen] =
+    useState(false)
 
   useEffect(() => {
     if (!repo) return
@@ -130,7 +146,15 @@ export function ProjectDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [repo])
+  }, [repo, branchReloadKey])
+
+  useEffect(() => {
+    if (!repoActionMessage) return
+    const id = window.setTimeout(() => {
+      setRepoActionMessage(null)
+    }, 3800)
+    return () => window.clearTimeout(id)
+  }, [repoActionMessage])
 
   if (!decodedPath || !repo) {
     return (
@@ -239,6 +263,82 @@ export function ProjectDetailPage() {
           </div>
         </div>
       </div>
+
+      <Section title="Actions">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap gap-1.5">
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={
+                deletingNodeModules || gitFetching || deleteNodeModulesDialogOpen
+              }
+              onClick={() => setDeleteNodeModulesDialogOpen(true)}
+            >
+              {deletingNodeModules ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              Delete node_modules
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={deletingNodeModules || gitFetching}
+              onClick={() => {
+                setRepoActionMessage(null)
+                setRepoActionError(null)
+                setGitFetching(true)
+                void (async () => {
+                  try {
+                    await gitFetchRepo(repo.path)
+                    setBranchReloadKey((k) => k + 1)
+                    setRepoActionMessage("Fetched latest from remote.")
+                    void doScan(repo.orbitLibraryId)
+                  } catch (error: unknown) {
+                    const message =
+                      error instanceof Error ? error.message : "git fetch failed"
+                    setRepoActionError(message)
+                  } finally {
+                    setGitFetching(false)
+                  }
+                })()
+              }}
+            >
+              {gitFetching ? (
+                <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+              ) : (
+                <Download className="size-3.5 text-muted-foreground" />
+              )}
+              Git fetch
+            </Button>
+          </div>
+          {repoActionError ? (
+            <div
+              role="alert"
+              className="flex items-start gap-2 border border-destructive/35 bg-destructive/5 px-2.5 py-1.5 text-[11px] text-destructive"
+            >
+              <span className="min-w-0 leading-snug">{repoActionError}</span>
+            </div>
+          ) : null}
+          {repoActionMessage ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center gap-2 border border-highlight/35 bg-highlight/10 px-2.5 py-1.5 text-[11px] text-foreground"
+            >
+              <CheckCircle2
+                className="size-3.5 shrink-0 text-highlight"
+                aria-hidden
+              />
+              <span className="leading-snug">{repoActionMessage}</span>
+            </div>
+          ) : null}
+        </div>
+      </Section>
 
       <div className="grid gap-4 md:grid-cols-2">
         <Section title="Latest Commit" icon={GitCommit}>
@@ -368,6 +468,42 @@ export function ProjectDetailPage() {
           </div>
         ) : null}
       </Section>
+
+      <DeleteNodeModulesDialog
+        open={deleteNodeModulesDialogOpen}
+        repoName={repo.name}
+        busy={deletingNodeModules}
+        onDismiss={() => {
+          if (!deletingNodeModules) setDeleteNodeModulesDialogOpen(false)
+        }}
+        onConfirm={() => {
+          setRepoActionMessage(null)
+          setRepoActionError(null)
+          setDeletingNodeModules(true)
+          void (async () => {
+            try {
+              const { skipped } = await deleteRepoNodeModules(repo.path)
+              setRepoActionMessage(
+                skipped
+                  ? "No node_modules folder was found."
+                  : "Removed node_modules.",
+              )
+              if (!skipped) {
+                void doScan(repo.orbitLibraryId)
+              }
+            } catch (error: unknown) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "Could not delete node_modules"
+              setRepoActionError(message)
+            } finally {
+              setDeletingNodeModules(false)
+              setDeleteNodeModulesDialogOpen(false)
+            }
+          })()
+        }}
+      />
     </section>
   )
 }

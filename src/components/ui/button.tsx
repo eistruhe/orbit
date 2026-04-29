@@ -22,6 +22,8 @@ const buttonVariants = cva(
           "bg-highlight text-highlight-foreground hover:bg-highlight/85 border-highlight",
         link:
           "text-foreground underline-offset-4 hover:underline normal-case tracking-normal",
+        clean:
+          "bg-transparent text-foreground hover:bg-transparent hover:text-foreground aria-expanded:bg-transparent aria-expanded:text-foreground dark:hover:bg-transparent/60",
       },
       size: {
         default:

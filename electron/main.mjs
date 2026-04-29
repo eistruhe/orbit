@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { readFileSync } from "node:fs"
 import { access, readFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { extname, join, normalize, resolve } from "node:path"
@@ -22,6 +23,18 @@ let preloadScriptPath = null
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = resolve(__filename, "..")
 const projectRoot = resolve(__dirname, "..")
+
+const PACKAGE_VERSION = (() => {
+  try {
+    return JSON.parse(
+      readFileSync(join(projectRoot, "package.json"), "utf8"),
+    ).version
+  } catch {
+    return "0.0.0"
+  }
+})()
+
+const PACKAGE_COPYRIGHT = "Copyright © 2026 Orbit"
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -336,6 +349,15 @@ ipcMain.handle("orbit:pick-image-paths", async () => {
 })
 
 app.whenReady().then(async () => {
+  if (process.platform === "darwin") {
+    app.setAboutPanelOptions({
+      applicationName: "Orbit",
+      applicationVersion: PACKAGE_VERSION,
+      version: PACKAGE_VERSION,
+      copyright: PACKAGE_COPYRIGHT,
+    })
+  }
+
   try {
     await boot()
   } catch (error) {

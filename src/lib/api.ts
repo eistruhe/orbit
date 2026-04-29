@@ -134,6 +134,54 @@ export async function fetchRepoBranches(
   return parseJson<RepoBranchesResponse>(res)
 }
 
+export type DeleteNodeModulesResult = {
+  skipped?: boolean
+}
+
+/**
+ * Deletes `node_modules` at the repository root (path validated against scan roots).
+ */
+export async function deleteRepoNodeModules(
+  path: string,
+): Promise<DeleteNodeModulesResult> {
+  const res = await fetch("/api/repo/delete-node-modules", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text) as {
+    error?: string
+    ok?: boolean
+    skipped?: boolean
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Could not delete node_modules",
+    )
+  }
+  return { skipped: data.skipped === true }
+}
+
+/**
+ * Runs `git fetch` in the given repository directory.
+ */
+export async function gitFetchRepo(path: string): Promise<void> {
+  const res = await fetch("/api/repo/git-fetch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text)
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ?? "git fetch failed",
+    )
+  }
+}
+
 export async function tinifyPaths(
   paths: string[],
   replaceOriginal: boolean,

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process"
-import { stat } from "node:fs/promises"
+import { realpath, rm, stat } from "node:fs/promises"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { basename, join, relative } from "node:path"
 import { promisify } from "node:util"
 
 import { Hono } from "hono"
@@ -495,6 +495,104 @@ app.get("/api/repo/branches", async (c) => {
     const message = e instanceof Error ? e.message : String(e)
     return c.json({ error: message }, 500)
   }
+})
+
+app.post("/api/repo/delete-node-modules", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+  const pathStr = (body as { path?: string }).path
+  if (typeof pathStr !== "string" || pathStr.length === 0) {
+    return c.json({ error: "Missing path" }, 400)
+  }
+
+  const prefs = await readPreferences()
+  const allowedRoots = getConfiguredLibraries(
+    prefs.scanRoot,
+    prefs.primaryScanRootLabel,
+    prefs.additionalScanRoots,
+  ).map((library) => library.path)
+
+  let safeRepo: string
+  try {
+    safeRepo = await resolvePathUnderAllowedRoots(pathStr, allowedRoots)
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return c.json({ error: message }, 400)
+  }
+
+  const nodeModulesPath = join(safeRepo, "node_modules")
+  let resolvedNm: string
+  try {
+    resolvedNm = await realpath(nodeModulesPath)
+  } catch {
+    return c.json({ ok: true, skipped: true })
+  }
+
+  const rel = relative(safeRepo, resolvedNm)
+  if (rel.startsWith("..") || rel === "..") {
+    return c.json(
+      { error: "node_modules resolves outside the repository" },
+      400,
+    )
+  }
+
+  if (basename(resolvedNm) !== "node_modules") {
+    return c.json({ error: "Not a node_modules directory" }, 400)
+  }
+
+  try {
+    const st = await stat(resolvedNm)
+    if (!st.isDirectory()) {
+      return c.json({ error: "node_modules is not a directory" }, 400)
+    }
+    await rm(resolvedNm, { recursive: true, force: true })
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return c.json({ error: message }, 500)
+  }
+
+  return c.json({ ok: true })
+})
+
+app.post("/api/repo/git-fetch", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+  const pathStr = (body as { path?: string }).path
+  if (typeof pathStr !== "string" || pathStr.length === 0) {
+    return c.json({ error: "Missing path" }, 400)
+  }
+
+  const prefs = await readPreferences()
+  const allowedRoots = getConfiguredLibraries(
+    prefs.scanRoot,
+    prefs.primaryScanRootLabel,
+    prefs.additionalScanRoots,
+  ).map((library) => library.path)
+
+  let safePath: string
+  try {
+    safePath = await resolvePathUnderAllowedRoots(pathStr, allowedRoots)
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return c.json({ error: message }, 400)
+  }
+
+  try {
+    await execFileAsync("git", ["fetch"], {
+      cwd: safePath,
+      env: process.env,
+      maxBuffer: 1024 * 1024,
+    })
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return c.json({ error: message }, 500)
+  }
+
+  return c.json({ ok: true })
 })
 
 console.log(`orbit API listening on http://127.0.0.1:${PORT}`)

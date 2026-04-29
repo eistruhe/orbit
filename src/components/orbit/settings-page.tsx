@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 
 import { useOrbit } from "@/components/orbit/orbit-context"
 import { validateTinifyKey } from "@/lib/api"
+import { ORBIT_APP_VERSION, ORBIT_COPYRIGHT_NOTICE } from "@/lib/orbit-meta"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { ProjectLibrary } from "@/types/repo"
@@ -314,6 +315,20 @@ export function SettingsPage() {
           {saving ? "Saving…" : "Save settings"}
         </Button>
       </div>
+
+      <Section
+        title="Copyright"
+      >
+        <div className="space-y-2 text-[11px] text-muted-foreground">
+          <p>
+            <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+              Version
+            </span>{" "}
+            <span className="tabular-nums text-foreground">{ORBIT_APP_VERSION}</span>
+          </p>
+          <p className="text-foreground">{ORBIT_COPYRIGHT_NOTICE}</p>
+        </div>
+      </Section>
     </div>
   )
 }

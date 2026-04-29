@@ -270,26 +270,25 @@ export function TinifyPage() {
             }}
           />
 
-          <FieldGroup className="max-w-xs">
-            <FieldLabel>
-              <Field orientation="horizontal">
-                <Checkbox
-                  id="replaceOriginal"
-                  checked={replaceOriginal}
-                  onCheckedChange={(checked) => setReplaceOriginal(Boolean(checked))}
-                />
-                <FieldContent>
-                  <FieldTitle>Replace original image</FieldTitle>
-                </FieldContent>
-              </Field>
-            </FieldLabel>
-          </FieldGroup>
+          <div className="flex items-center justify-between gap-2">
+            <FieldGroup className="max-w-xs">
+              <FieldLabel>
+                <Field orientation="horizontal">
+                  <Checkbox
+                    id="replaceOriginal"
+                    checked={replaceOriginal}
+                    onCheckedChange={(checked) => setReplaceOriginal(Boolean(checked))}
+                  />
+                  <FieldContent>
+                    <FieldTitle>Replace original image</FieldTitle>
+                  </FieldContent>
+                </Field>
+              </FieldLabel>
+            </FieldGroup>
 
-          <div className="flex items-center gap-2">
             <Button
               type="button"
               variant="outline"
-              size="sm"
               onClick={() => {
                 queueRef.current = []
                 setRows([])

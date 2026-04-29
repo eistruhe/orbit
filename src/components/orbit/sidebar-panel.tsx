@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Folder, Pin, Settings, Wrench } from "lucide-react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
-import { memo, startTransition, useState } from "react"
+import { memo, startTransition, useRef, useState } from "react"
 
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { ThemeToggle } from "@/components/orbit/theme-toggle"
@@ -100,26 +100,55 @@ function SubNavItem({ label, active, onClick }: SubNavItemProps) {
           : "text-muted-foreground hover:text-foreground",
       )}
     >
-      {active ? (
-        <span
-          className="absolute top-1/2 left-[19.5px] w-0.5 h-4 -translate-x-1/2 -translate-y-1/2 bg-highlight shadow-[0_0_6px_var(--highlight)]"
-          aria-hidden
-        />
-      ) : null}
       <span className="truncate">{label}</span>
     </button>
   )
 }
 
+/** `h-8` sub-rows; center of row i from top of rail (px). */
+const TOOLS_SUB_NAV_ROW_PX = 32
+const TOOLS_SUB_NAV_ROW_CENTER_PX = TOOLS_SUB_NAV_ROW_PX / 2
+
+const TOOLS_SUB_NAV_PATHS = [
+  "/tools/tinify",
+  "/tools/svgo",
+  "/tools/px-to-rem",
+  "/tools/open-graph",
+  "/tools/schema-viewer",
+] as const
+
 /**
  * Wraps a list of SubNavItems in a vertical rail aligned to the parent
  * NavItem icon column.
  */
-function SubNavRail({ children }: { children: React.ReactNode }) {
+function SubNavRail({
+  children,
+  activeIndex,
+}: {
+  children: React.ReactNode
+  activeIndex: number
+}) {
+  const lastActiveIndexRef = useRef(0)
+  if (activeIndex >= 0) {
+    lastActiveIndexRef.current = activeIndex
+  }
+  const layoutIndex =
+    activeIndex >= 0 ? activeIndex : lastActiveIndexRef.current
+  const indicatorTop = TOOLS_SUB_NAV_ROW_CENTER_PX + layoutIndex * TOOLS_SUB_NAV_ROW_PX
+  const indicatorVisible = activeIndex >= 0
+
   return (
     <div className="relative pb-1">
       <span
         className="absolute top-0 bottom-1 left-[19px] w-px bg-border"
+        aria-hidden
+      />
+      <span
+        className={cn(
+          "pointer-events-none absolute left-[19.5px] w-0.5 h-4 -translate-x-1/2 -translate-y-1/2 bg-highlight shadow-[0_0_6px_var(--highlight)] transition-[top,opacity] duration-200 ease-out",
+          indicatorVisible ? "opacity-100" : "opacity-0",
+        )}
+        style={{ top: indicatorTop }}
         aria-hidden
       />
       {children}
@@ -158,6 +187,7 @@ export const SidebarPanel = memo(function SidebarPanel({
   const [manualToolsExpanded, setManualToolsExpanded] = useState(false)
   const toolsExpanded = toolsActive || manualToolsExpanded
   const isToolsHub = pathname === "/tools" || pathname === "/tools/"
+  const toolsSubNavActiveIndex = TOOLS_SUB_NAV_PATHS.findIndex((p) => pathname === p)
 
   return (
     <aside className="sticky top-0 z-20 flex h-svh w-60 shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar text-sidebar-foreground">
@@ -232,7 +262,7 @@ export const SidebarPanel = memo(function SidebarPanel({
             }
           />
           {toolsExpanded ? (
-            <SubNavRail>
+            <SubNavRail activeIndex={toolsSubNavActiveIndex}>
               <SubNavItem
                 label="Tinify"
                 active={pathname === "/tools/tinify"}

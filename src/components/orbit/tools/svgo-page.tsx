@@ -1,17 +1,5 @@
-import {
-  Check,
-  Copy,
-  Download,
-  RefreshCw,
-  Upload,
-} from "lucide-react"
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react"
+import { Check, Copy, Download, Upload, } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState, } from "react"
 
 import { useOrbit } from "@/components/orbit/orbit-context"
 import { ToolSection } from "@/components/orbit/tools/tool-section"
@@ -19,11 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
-import {
-  createDefaultSvgoSettings,
-  mergeSvgoSettings,
-  type SvgoUiSettings,
-} from "@/lib/svgo/default-settings"
+import { createDefaultSvgoSettings, mergeSvgoSettings, type SvgoUiSettings, } from "@/lib/svgo/default-settings"
 import { optimizeSvgString } from "@/lib/svgo/optimize-svg"
 import { svgoPluginConfig } from "@/lib/svgo/svgo-plugin-config"
 import { cn } from "@/lib/utils"
@@ -323,16 +307,6 @@ export function SvgoPage() {
                 Saving settings...
               </span>
             ) : null}
-            <Button
-              className="ml-auto"
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setSettings(createDefaultSvgoSettings())}
-            >
-              <RefreshCw className="size-3.5" />
-              Reset settings
-            </Button>
           </div>
           {saveError ? (
             <p className="text-[11px] text-destructive">{saveError}</p>
@@ -343,7 +317,17 @@ export function SvgoPage() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
         <ToolSection
           title="Settings"
-          description="SVGO optimizer controls (plugins + global precision controls)."
+          trailing={
+            <Button
+              type="button"
+              variant="clean"
+              size="xs"
+              className="h-2.5 p-0 hover:text-destructive text-muted-foreground"
+              onClick={() => setSettings(createDefaultSvgoSettings())}
+            >
+              Reset settings
+            </Button>
+          }
         >
           <div className="space-y-4">
             <div className="space-y-2">
@@ -458,7 +442,6 @@ export function SvgoPage() {
 
         <ToolSection
           title="Optimized files"
-          description="Copy or download each optimized SVG output."
         >
           <div className="space-y-2">
             {optimizedFiles.length === 0 ? (
