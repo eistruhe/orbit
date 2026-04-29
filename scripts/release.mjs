@@ -1,0 +1,290 @@
+#!/usr/bin/env node
+/**
+ * Guided macOS release: bump semver, build desktop, publish to GitHub Releases, commit + tag + push.
+ * Requires GH_TOKEN (or GITHUB_TOKEN) with repo scope for uploads.
+ */
+
+import { readFileSync, writeFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
+import readline from "node:readline/promises"
+import process from "node:process"
+import { dirname, join, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
+
+import semver from "semver"
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const projectRoot = resolve(__dirname, "..")
+const packageJsonPath = join(projectRoot, "package.json")
+
+function run(cmd, args, options = {}) {
+  const result = spawnSync(cmd, args, {
+    cwd: projectRoot,
+    stdio: "inherit",
+    env: process.env,
+    ...options,
+  })
+  if (result.error) throw result.error
+  if (result.status !== 0) {
+    throw new Error(`Command failed: ${cmd} ${args.join(" ")} (${result.status ?? "unknown"})`)
+  }
+}
+
+function runCapture(cmd, args) {
+  const result = spawnSync(cmd, args, {
+    cwd: projectRoot,
+    encoding: "utf8",
+    env: process.env,
+  })
+  if (result.error) throw result.error
+  return { status: result.status ?? 1, stdout: (result.stdout ?? "").trimEnd() }
+}
+
+function usage() {
+  console.log(`
+Orbit desktop release (macOS + GitHub)
+
+Usage:
+  bun run release
+  bun run release --dry-run
+  bun run release -- --version=1.2.3
+
+Options:
+  --version=X.Y.Z   Bump to this semver (otherwise prompt interactive)
+  --dry-run         Print steps only
+  --no-push         Build + publish; skip git commit, tag, and push
+  --allow-dirty     Allow uncommitted changes before bumping
+
+Env:
+  GH_TOKEN or GITHUB_TOKEN   Required for uploading release assets unless --dry-run
+`)
+}
+
+function parseArgs(argv) {
+  /** @type {{ dryRun: boolean; noPush: boolean; allowDirty: boolean; version?: string }} */
+  const out = { dryRun: false, noPush: false, allowDirty: false, version: undefined }
+  let i = 0
+  while (i < argv.length) {
+    const a = argv[i]
+    if (a === "-h" || a === "--help") {
+      usage()
+      process.exit(0)
+    }
+    if (a === "--dry-run") {
+      out.dryRun = true
+      i++
+      continue
+    }
+    if (a === "--no-push") {
+      out.noPush = true
+      i++
+      continue
+    }
+    if (a === "--allow-dirty") {
+      out.allowDirty = true
+      i++
+      continue
+    }
+    if (a.startsWith("--version=")) {
+      out.version = a.slice("--version=".length)
+      i++
+      continue
+    }
+    if (a === "--version") {
+      const next = argv[i + 1]
+      if (!next || next.startsWith("-")) {
+        console.error("--version expects a semver value.")
+        usage()
+        process.exit(2)
+      }
+      out.version = next
+      i += 2
+      continue
+    }
+    console.error(`Unknown argument: ${a}`)
+    usage()
+    process.exit(2)
+  }
+  return out
+}
+
+function isWorkingTreeDirty() {
+  const result = spawnSync("git", ["status", "--porcelain"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+  })
+  return Boolean(result.stdout && result.stdout.trim().length > 0)
+}
+
+/**
+ * @param {string} raw
+ * @param {string} currentValid
+ */
+function resolveNextVersion(raw, currentValid) {
+  const trimmed = String(raw).trim()
+  if (!trimmed) return null
+  const coerced = semver.coerce(trimmed)
+  const v =
+    semver.valid(trimmed) || (coerced ? semver.valid(coerced.version) : null)
+  if (!v) return null
+  if (semver.lte(v, currentValid)) return null
+  return v
+}
+
+function resolvePushTarget() {
+  const head = runCapture("git", ["rev-parse", "--abbrev-ref", "HEAD"]).stdout || "main"
+  const upstream = runCapture("git", ["rev-parse", "--abbrev-ref", `${head}@{u}`])
+  if (upstream.status !== 0 || !upstream.stdout) {
+    return { remote: "origin", useHead: true }
+  }
+  const full = upstream.stdout.trim()
+  const slash = full.indexOf("/")
+  if (slash === -1) {
+    return { remote: "origin", useHead: true }
+  }
+  return {
+    remote: full.slice(0, slash),
+    branch: full.slice(slash + 1),
+    useHead: false,
+  }
+}
+
+async function promptLine(prompt) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  })
+  try {
+    const answer = await rl.question(prompt)
+    return String(answer ?? "").trim()
+  } finally {
+    rl.close()
+  }
+}
+
+async function main() {
+  const flags = parseArgs(process.argv.slice(2))
+
+  if (!flags.allowDirty && isWorkingTreeDirty()) {
+    console.error("\nabort: Working tree has uncommitted changes.")
+    console.error("Commit or stash, or rerun with --allow-dirty\n")
+    process.exit(1)
+  }
+
+  const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8"))
+  const current = pkg.version
+  const currentValid = semver.valid(current)
+  if (!currentValid) {
+    throw new Error(`Invalid current package.json version: ${JSON.stringify(current)}`)
+  }
+
+  const suggested = semver.inc(currentValid, "patch")
+  if (!suggested) {
+    throw new Error("Could not compute next patch version.")
+  }
+
+  let next
+  if (flags.version !== undefined && flags.version.trim().length > 0) {
+    next = resolveNextVersion(flags.version.trim(), currentValid)
+    if (!next) {
+      console.error(`Invalid semver or version must be greater than ${currentValid}: ${flags.version}`)
+      process.exit(1)
+    }
+  } else {
+    const rawInput = await promptLine(
+      `New semver version (current: ${current}, suggested: ${suggested}): `,
+    )
+    next = resolveNextVersion(rawInput.trim() || suggested, currentValid)
+    if (!next) {
+      console.error(`Invalid or non-incrementing version: ${JSON.stringify(rawInput || suggested)}`)
+      process.exit(1)
+    }
+  }
+
+  const ghToken =
+    typeof process.env.GH_TOKEN === "string" && process.env.GH_TOKEN.trim().length > 0
+      ? process.env.GH_TOKEN.trim()
+      : typeof process.env.GITHUB_TOKEN === "string" && process.env.GITHUB_TOKEN.trim().length > 0
+        ? process.env.GITHUB_TOKEN.trim()
+        : ""
+
+  if (!flags.dryRun && !ghToken) {
+    console.error("GH_TOKEN or GITHUB_TOKEN must be set (repo scope) to publish artifacts.")
+    process.exit(1)
+  }
+
+  const tagName = `v${next}`
+  const tagCheck = spawnSync("git", ["rev-parse", tagName], {
+    cwd: projectRoot,
+    encoding: "utf8",
+    stdio: "pipe",
+  })
+  if ((tagCheck.status ?? 1) === 0) {
+    console.error(`Tag ${tagName} already exists locally. Delete it or choose another version.`)
+    process.exit(1)
+  }
+
+  const lsRemote = runCapture("git", ["ls-remote", "--tags", "origin", tagName])
+  if (lsRemote.status === 0 && lsRemote.stdout.includes(`refs/tags/${tagName}`)) {
+    console.error(`Tag ${tagName} already exists on origin. Bump to a newer version.`)
+    process.exit(1)
+  }
+
+  const steps = [
+    `Set package.json version → ${next}`,
+    "bun run build:desktop",
+    "electron-builder --publish always --mac",
+    `git commit: Release ${next}`,
+    `git tag: ${tagName}`,
+    "git push: branch + tag",
+  ]
+
+  console.log("\nRelease plan:")
+  steps.forEach((s, idx) => console.log(`  ${idx + 1}. ${s}`))
+  console.log("")
+
+  if (flags.dryRun) {
+    console.log("Dry run completed.")
+    process.exit(0)
+  }
+
+  const pkgNext = { ...pkg, version: next }
+  writeFileSync(packageJsonPath, `${JSON.stringify(pkgNext, null, 2)}\n`, "utf8")
+
+  console.log("\nBuilding desktop bundle...")
+  run("bun", ["run", "build:desktop"])
+
+  console.log("\nPublishing GitHub Release assets...")
+  process.env.GH_TOKEN = ghToken
+  process.env.GITHUB_TOKEN = ghToken
+  run("bunx", ["electron-builder", "--publish", "always", "--mac"])
+
+  if (flags.noPush) {
+    console.log(
+      "\nSkipping git commit/tag/push (--no-push).\nVersion bump is in package.json; commit manually.",
+    )
+    process.exit(0)
+  }
+
+  console.log("\nRecording release in git...")
+  run("git", ["add", "package.json"])
+  run("git", ["commit", "-m", `Release ${next}`])
+  run("git", ["tag", "-a", tagName, "-m", `Orbit ${next}`])
+
+  const target = resolvePushTarget()
+  if (target.useHead) {
+    run("git", ["push", target.remote, "HEAD"])
+  } else {
+    run("git", ["push", target.remote, target.branch])
+  }
+  run("git", ["push", target.remote, tagName])
+
+  console.log(
+    `\nDone: ${tagName} is on ${target.remote} and GitHub Release should list the mac artifacts.\n`,
+  )
+}
+
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : err)
+  process.exit(1)
+})

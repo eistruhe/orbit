@@ -7,7 +7,10 @@ import process from "node:process"
 import { fileURLToPath } from "node:url"
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron"
-import { autoUpdater } from "electron-updater"
+import electronUpdaterModule from "electron-updater"
+
+/** CommonJS interop for ESM: use default export package object. */
+const { autoUpdater } = electronUpdaterModule
 
 /** Leave 8788 for `bun run dev`; Electron uses a dedicated default. */
 const API_PORT = Number(process.env.ORBIT_API_PORT) || 38488
