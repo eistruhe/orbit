@@ -194,7 +194,7 @@ export function SettingsPage() {
             : "An update is available — download runs in the background; restart when prompted.",
         )
       } else {
-        setUpdateStatusLine("You’re up to date for your update channel.")
+        setUpdateStatusLine("You’re up to date.")
       }
     } catch (err) {
       setUpdateStatusLine(err instanceof Error ? err.message : String(err))
