@@ -7,6 +7,7 @@ import process from "node:process"
 import { fileURLToPath } from "node:url"
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron"
+import { autoUpdater } from "electron-updater"
 
 /** Leave 8788 for `bun run dev`; Electron uses a dedicated default. */
 const API_PORT = Number(process.env.ORBIT_API_PORT) || 38488
@@ -19,6 +20,9 @@ let uiServer = null
 let mainWindow = null
 let isQuitting = false
 let preloadScriptPath = null
+let updateCheckInterval = null
+
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = resolve(__filename, "..")
@@ -284,6 +288,47 @@ function createMainWindow(preloadPath) {
   })
 }
 
+async function checkForUpdates() {
+  try {
+    await autoUpdater.checkForUpdatesAndNotify()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    process.stderr.write(`[orbit-updater] Update check failed: ${message}\n`)
+  }
+}
+
+function startAutoUpdater() {
+  if (!app.isPackaged) return
+
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on("checking-for-update", () => {
+    process.stdout.write("[orbit-updater] Checking for updates...\n")
+  })
+  autoUpdater.on("update-available", (info) => {
+    process.stdout.write(`[orbit-updater] Update available: ${info.version}\n`)
+  })
+  autoUpdater.on("update-not-available", () => {
+    process.stdout.write("[orbit-updater] No updates available.\n")
+  })
+  autoUpdater.on("update-downloaded", (info) => {
+    process.stdout.write(
+      `[orbit-updater] Update downloaded (${info.version}); will install on quit.\n`,
+    )
+  })
+  autoUpdater.on("error", (error) => {
+    const message = error instanceof Error ? error.message : String(error)
+    process.stderr.write(`[orbit-updater] Error: ${message}\n`)
+  })
+
+  void checkForUpdates()
+
+  updateCheckInterval = setInterval(() => {
+    void checkForUpdates()
+  }, UPDATE_CHECK_INTERVAL_MS)
+}
+
 async function boot() {
   const runtimePaths = resolveRuntimePaths()
   preloadScriptPath = runtimePaths.preloadPath
@@ -318,6 +363,10 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   isQuitting = true
+  if (updateCheckInterval) {
+    clearInterval(updateCheckInterval)
+    updateCheckInterval = null
+  }
   if (uiServer) {
     uiServer.close()
     uiServer = null
@@ -360,6 +409,7 @@ app.whenReady().then(async () => {
 
   try {
     await boot()
+    startAutoUpdater()
   } catch (error) {
     await showBootError(error)
     app.quit()

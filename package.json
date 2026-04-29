@@ -1,7 +1,7 @@
 {
   "name": "orbit",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
@@ -30,6 +30,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "concurrently": "^9.2.1",
+    "electron-updater": "^6.8.3",
     "hono": "^4.12.9",
     "lucide-react": "^1.0.1",
     "next-themes": "^0.4.6",
@@ -88,6 +89,11 @@
       }
     ],
     "afterSign": "./scripts/notarize.mjs",
+    "publish": {
+      "provider": "github",
+      "owner": "eistruhe",
+      "repo": "orbit"
+    },
     "mac": {
       "target": [
         "dmg",
@@ -98,19 +104,6 @@
       "hardenedRuntime": true,
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.plist"
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "zip"
-      ]
-    },
-    "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
-      "category": "Development"
     }
   }
 }
