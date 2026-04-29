@@ -34,6 +34,7 @@ let preloadScriptPath = null
 let updateCheckInterval = null
 
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
+const UPDATES_ENABLED = false
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = resolve(__filename, "..")
@@ -309,7 +310,7 @@ async function fetchUpdatesSilently() {
 }
 
 function startAutoUpdater() {
-  if (!app.isPackaged) return
+  if (!UPDATES_ENABLED || !app.isPackaged) return
 
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
@@ -476,6 +477,9 @@ ipcMain.handle("orbit:pick-image-paths", async () => {
  * @returns Structured result shared by IPC and the macOS App menu command.
  */
 async function performUserInitiatedUpdateCheck() {
+  if (!UPDATES_ENABLED) {
+    return { outcome: "disabled" }
+  }
   if (!app.isPackaged) {
     return { outcome: "not_packaged" }
   }
@@ -494,6 +498,14 @@ async function performUserInitiatedUpdateCheck() {
 async function showCheckForUpdatesMenuDialog() {
   const parent = BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined
   const result = await performUserInitiatedUpdateCheck()
+  if (result.outcome === "disabled") {
+    await dialog.showMessageBox(parent, {
+      type: "info",
+      title: "Orbit",
+      message: "Automatic updates are disabled for now.",
+    })
+    return
+  }
   if (result.outcome === "not_packaged") {
     await dialog.showMessageBox(parent, {
       type: "info",
@@ -541,11 +553,15 @@ function setDarwinApplicationMenu() {
       label: app.name,
       submenu: [
         { role: "about" },
-        {
-          label: "Check for Updates…",
-          click: () => void showCheckForUpdatesMenuDialog(),
-        },
-        { type: "separator" },
+        ...(UPDATES_ENABLED
+          ? [
+              {
+                label: "Check for Updates…",
+                click: () => void showCheckForUpdatesMenuDialog(),
+              },
+              { type: "separator" },
+            ]
+          : []),
         { role: "services" },
         { type: "separator" },
         { role: "hide" },
@@ -565,6 +581,9 @@ function setDarwinApplicationMenu() {
 
 ipcMain.handle("orbit:check-for-updates", async () => {
   const result = await performUserInitiatedUpdateCheck()
+  if (result.outcome === "disabled") {
+    return { ok: false, reason: "disabled" }
+  }
   if (result.outcome === "not_packaged") {
     return { ok: false, reason: "not_packaged" }
   }

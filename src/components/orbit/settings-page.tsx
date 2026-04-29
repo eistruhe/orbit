@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 
 import { useOrbit } from "@/components/orbit/orbit-context"
 import { validateTinifyKey } from "@/lib/api"
@@ -55,9 +55,6 @@ export function SettingsPage() {
     valid: boolean
     compressionCount?: number
   } | null>(null)
-  const [hasUpdaterBridge, setHasUpdaterBridge] = useState(false)
-  const [updateStatusLine, setUpdateStatusLine] = useState<string | null>(null)
-
   useEffect(() => {
     setPrimaryScanRootLabel(prefs.primaryScanRootLabel || "Projects")
     setScanRoot(prefs.scanRoot ?? "~/Sites")
@@ -69,10 +66,6 @@ export function SettingsPage() {
     prefs.additionalScanRoots,
     prefs.appSettings.tinify?.apiKey,
   ])
-
-  useEffect(() => {
-    setHasUpdaterBridge(typeof window !== "undefined" && Boolean(window.orbitUpdates))
-  }, [])
 
   const addAdditionalRoot = () => {
     const id =
@@ -172,34 +165,6 @@ export function SettingsPage() {
       setValidating(false)
     }
   }
-
-  const checkAppUpdates = useCallback(async () => {
-    const invoke = window.orbitUpdates?.checkForUpdates
-    if (!invoke) return
-    setUpdateStatusLine("Checking…")
-    try {
-      const result = await invoke()
-      if (!result.ok) {
-        if ("reason" in result && result.reason === "not_packaged") {
-          setUpdateStatusLine("Updates run in the release app only.")
-        } else if ("message" in result) {
-          setUpdateStatusLine(result.message)
-        }
-        return
-      }
-      if (result.isUpdateAvailable === true) {
-        setUpdateStatusLine(
-          result.version
-            ? `Version ${result.version} is available — download runs in the background; restart when prompted.`
-            : "An update is available — download runs in the background; restart when prompted.",
-        )
-      } else {
-        setUpdateStatusLine("You’re up to date.")
-      }
-    } catch (err) {
-      setUpdateStatusLine(err instanceof Error ? err.message : String(err))
-    }
-  }, [])
 
   return (
     <div className="space-y-4">
@@ -360,29 +325,9 @@ export function SettingsPage() {
             </span>{" "}
             <span className="tabular-nums text-foreground">{ORBIT_APP_VERSION}</span>
           </p>
-          {hasUpdaterBridge ? (
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 text-[11px]"
-                onClick={() => void checkAppUpdates()}
-              >
-                Check for updates
-              </Button>
-              {updateStatusLine ? (
-                <span className="text-[11px] text-muted-foreground">{updateStatusLine}</span>
-              ) : null}
-            </div>
-          ) : (
-            <p className="border border-border bg-muted/30 px-2 py-1.5 text-[11px] text-muted-foreground">
-              Updates are checked automatically in the packaged Orbit app. This screen in a browser
-              (for example localhost during development) doesn’t expose the desktop updater — use{" "}
-              <span className="text-foreground">Orbit → Check for Updates…</span> in the desktop app’s
-              menu bar, or reopen Settings inside the Electron build.
-            </p>
-          )}
+          <p className="border border-border bg-muted/30 px-2 py-1.5 text-[11px] text-muted-foreground">
+            Automatic updates are disabled for now.
+          </p>
           <p className="text-foreground">{ORBIT_COPYRIGHT_NOTICE}</p>
         </div>
       </Section>
