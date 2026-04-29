@@ -6,7 +6,15 @@ import { extname, join, normalize, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron"
+import {
+  app,
+  autoUpdater as nativeAutoUpdater,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  shell,
+} from "electron"
 import electronUpdaterModule from "electron-updater"
 
 /** CommonJS interop for ESM: use default export package object. */
@@ -328,11 +336,12 @@ function startAutoUpdater() {
         message: `Version ${versionLabel} has been downloaded.`,
         detail:
           "Restart now to finish installing. You can also quit later and the update will apply on exit.",
-        buttons: ["Restart now", "Later"],
-        defaultId: 0,
-        cancelId: 1,
+        buttons: ["Later", "Restart now"],
+        defaultId: 1,
+        cancelId: 0,
       })
-      if (response === 0) {
+      process.stdout.write(`[orbit-updater] Update dialog response: ${response}\n`)
+      if (response === 1) {
         quitAndInstallDownloadedUpdate()
       }
     } catch {
@@ -399,6 +408,7 @@ function disposeOrbitalServices() {
  * first matches electron-builder updater guidance (#8997).
  */
 function quitAndInstallDownloadedUpdate() {
+  process.stdout.write("[orbit-updater] Restart now requested; preparing quit and install.\n")
   isQuitting = true
   disposeOrbitalServices()
 
@@ -407,10 +417,22 @@ function quitAndInstallDownloadedUpdate() {
     win.removeAllListeners("close")
   }
 
+  app.removeAllListeners("window-all-closed")
+
+  nativeAutoUpdater.once("before-quit-for-update", () => {
+    process.stdout.write("[orbit-updater] before-quit-for-update fired.\n")
+    isQuitting = true
+    disposeOrbitalServices()
+    app.exit(0)
+  })
+
   queueMicrotask(() => {
     try {
+      process.stdout.write("[orbit-updater] Calling quitAndInstall(false, true).\n")
       autoUpdater.quitAndInstall(false, true)
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      process.stderr.write(`[orbit-updater] quitAndInstall failed: ${message}\n`)
       app.exit(0)
     }
   })
