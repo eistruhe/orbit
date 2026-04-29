@@ -333,7 +333,7 @@ function startAutoUpdater() {
         cancelId: 1,
       })
       if (response === 0) {
-        setImmediate(() => autoUpdater.quitAndInstall())
+        quitAndInstallDownloadedUpdate()
       }
     } catch {
       /* dialog failed; quit path still installs on exit via autoInstallOnAppQuit */
@@ -377,14 +377,10 @@ async function showBootError(error) {
   })
 }
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit()
-  }
-})
-
-app.on("before-quit", () => {
-  isQuitting = true
+/**
+ * Tear down child services shared by normal quit and `quitAndInstall()`.
+ */
+function disposeOrbitalServices() {
   if (updateCheckInterval) {
     clearInterval(updateCheckInterval)
     updateCheckInterval = null
@@ -394,6 +390,41 @@ app.on("before-quit", () => {
     uiServer = null
   }
   killChildProcess(apiProcess)
+}
+
+/**
+ * `@electron/updater.quitAndInstall` can skip normal `before-quit` ordering. On macOS our
+ * `BrowserWindow` `close` handler calls `preventDefault()` and hides the window unless
+ * `isQuitting`, which blocks installer quit. Removing the listener and flushing cleanup
+ * first matches electron-builder updater guidance (#8997).
+ */
+function quitAndInstallDownloadedUpdate() {
+  isQuitting = true
+  disposeOrbitalServices()
+
+  const win = mainWindow
+  if (win && !win.isDestroyed()) {
+    win.removeAllListeners("close")
+  }
+
+  queueMicrotask(() => {
+    try {
+      autoUpdater.quitAndInstall(false, true)
+    } catch {
+      app.exit(0)
+    }
+  })
+}
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit()
+  }
+})
+
+app.on("before-quit", () => {
+  isQuitting = true
+  disposeOrbitalServices()
 })
 
 app.on("activate", () => {
