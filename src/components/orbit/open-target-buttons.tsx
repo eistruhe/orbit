@@ -156,7 +156,7 @@ export function OpenTargetButtons({
           }
         />
         <TooltipContent side="bottom" className="text-xs">
-          Open in Browser ({`${path.replace('/Users/andreschwarzer/Sites/', "")}.test`})
+          Open in Browser ({`${path.replace(/^\/Users\/[^/]+\/Sites\//, "")}.test`})
         </TooltipContent>
       </Tooltip>
       {remoteUrl && onOpenRemote ? (
