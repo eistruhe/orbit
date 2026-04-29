@@ -6,5 +6,12 @@ declare global {
       getPathForFile: (file: File) => string
       pickImagePaths: () => Promise<string[]>
     }
+    orbitUpdates?: {
+      checkForUpdates: () => Promise<
+        | { ok: true; version: string | null; isUpdateAvailable?: boolean }
+        | { ok: false; reason: string }
+        | { ok: false; message: string }
+      >
+    }
   }
 }

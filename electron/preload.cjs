@@ -19,3 +19,9 @@ contextBridge.exposeInMainWorld("orbitFiles", {
     }
   },
 })
+
+contextBridge.exposeInMainWorld("orbitUpdates", {
+  checkForUpdates() {
+    return ipcRenderer.invoke("orbit:check-for-updates")
+  },
+})

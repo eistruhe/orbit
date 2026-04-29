@@ -6,7 +6,7 @@ import { extname, join, normalize, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron"
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron"
 import electronUpdaterModule from "electron-updater"
 
 /** CommonJS interop for ESM: use default export package object. */
@@ -291,9 +291,9 @@ function createMainWindow(preloadPath) {
   })
 }
 
-async function checkForUpdates() {
+async function fetchUpdatesSilently() {
   try {
-    await autoUpdater.checkForUpdatesAndNotify()
+    await autoUpdater.checkForUpdates()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     process.stderr.write(`[orbit-updater] Update check failed: ${message}\n`)
@@ -315,20 +315,39 @@ function startAutoUpdater() {
   autoUpdater.on("update-not-available", () => {
     process.stdout.write("[orbit-updater] No updates available.\n")
   })
-  autoUpdater.on("update-downloaded", (info) => {
+  autoUpdater.on("update-downloaded", async (info) => {
+    const versionLabel = typeof info?.version === "string" ? info.version : "?"
     process.stdout.write(
-      `[orbit-updater] Update downloaded (${info.version}); will install on quit.\n`,
+      `[orbit-updater] Update downloaded (${versionLabel}); prompting to restart.\n`,
     )
+    try {
+      const parent = BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined
+      const { response } = await dialog.showMessageBox(parent, {
+        type: "question",
+        title: "Orbit update ready",
+        message: `Version ${versionLabel} has been downloaded.`,
+        detail:
+          "Restart now to finish installing. You can also quit later and the update will apply on exit.",
+        buttons: ["Restart now", "Later"],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      if (response === 0) {
+        setImmediate(() => autoUpdater.quitAndInstall())
+      }
+    } catch {
+      /* dialog failed; quit path still installs on exit via autoInstallOnAppQuit */
+    }
   })
   autoUpdater.on("error", (error) => {
     const message = error instanceof Error ? error.message : String(error)
     process.stderr.write(`[orbit-updater] Error: ${message}\n`)
   })
 
-  void checkForUpdates()
+  void fetchUpdatesSilently()
 
   updateCheckInterval = setInterval(() => {
-    void checkForUpdates()
+    void fetchUpdatesSilently()
   }, UPDATE_CHECK_INTERVAL_MS)
 }
 
@@ -400,7 +419,117 @@ ipcMain.handle("orbit:pick-image-paths", async () => {
   return result.filePaths
 })
 
+/**
+ * @returns Structured result shared by IPC and the macOS App menu command.
+ */
+async function performUserInitiatedUpdateCheck() {
+  if (!app.isPackaged) {
+    return { outcome: "not_packaged" }
+  }
+  try {
+    const result = await autoUpdater.checkForUpdates()
+    const isUpdateAvailable = Boolean(result?.isUpdateAvailable)
+    const version =
+      typeof result?.updateInfo?.version === "string" ? result.updateInfo.version : null
+    return { outcome: "ok", isUpdateAvailable, version }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { outcome: "error", message }
+  }
+}
+
+async function showCheckForUpdatesMenuDialog() {
+  const parent = BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined
+  const result = await performUserInitiatedUpdateCheck()
+  if (result.outcome === "not_packaged") {
+    await dialog.showMessageBox(parent, {
+      type: "info",
+      title: "Orbit",
+      message: "Updates are checked in the release app.",
+      detail:
+        "This development build is not packaged. Install Orbit from a release installer to enable automatic updates.",
+    })
+    return
+  }
+  if (result.outcome === "error") {
+    await dialog.showMessageBox(parent, {
+      type: "error",
+      title: "Orbit update",
+      message: "Could not check for updates.",
+      detail: result.message,
+    })
+    return
+  }
+  if (result.isUpdateAvailable) {
+    const versionHint =
+      result.version !== null ? `Version ${result.version} is available.` : "A new version is available."
+    await dialog.showMessageBox(parent, {
+      type: "info",
+      title: "Orbit update",
+      message: versionHint,
+      detail:
+        "The update downloads automatically when your feed provides it. Restart when prompted to finish installing.",
+    })
+    return
+  }
+  await dialog.showMessageBox(parent, {
+    type: "info",
+    title: "Orbit",
+    message: "You're up to date.",
+    detail: `Orbit ${PACKAGE_VERSION}`,
+  })
+}
+
+function setDarwinApplicationMenu() {
+  if (process.platform !== "darwin") return
+
+  const template = [
+    {
+      label: app.name,
+      submenu: [
+        { role: "about" },
+        {
+          label: "Check for Updates…",
+          click: () => void showCheckForUpdatesMenuDialog(),
+        },
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    },
+    { role: "editMenu" },
+    { role: "viewMenu" },
+    { role: "windowMenu" },
+  ]
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+ipcMain.handle("orbit:check-for-updates", async () => {
+  const result = await performUserInitiatedUpdateCheck()
+  if (result.outcome === "not_packaged") {
+    return { ok: false, reason: "not_packaged" }
+  }
+  if (result.outcome === "error") {
+    return { ok: false, message: result.message }
+  }
+  return {
+    ok: true,
+    version: result.version,
+    ...(typeof result.isUpdateAvailable === "boolean"
+      ? { isUpdateAvailable: result.isUpdateAvailable }
+      : {}),
+  }
+})
+
 app.whenReady().then(async () => {
+  app.setName("Orbit")
+
   if (process.platform === "darwin") {
     app.setAboutPanelOptions({
       applicationName: "Orbit",
@@ -413,6 +542,7 @@ app.whenReady().then(async () => {
   try {
     await boot()
     startAutoUpdater()
+    setDarwinApplicationMenu()
   } catch (error) {
     await showBootError(error)
     app.quit()
