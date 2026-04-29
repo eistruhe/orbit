@@ -183,6 +183,58 @@ function resolvePushTarget() {
   }
 }
 
+function getGitHeadSha() {
+  const r = runCapture("git", ["rev-parse", "HEAD"])
+  if (r.status !== 0) return null
+  return r.stdout.trim()
+}
+
+/** @param {string} tagName */
+function tagExistsLocally(tagName) {
+  const r = spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/tags/${tagName}`], {
+    cwd: projectRoot,
+  })
+  return (r.status ?? 1) === 0
+}
+
+/**
+ * Create or move an annotated tag to the current HEAD (e.g. after a failed run left an old tag).
+ * @param {string} tagName
+ * @param {string} message
+ */
+function ensureReleaseTag(tagName, message) {
+  const head = getGitHeadSha()
+  if (!head) throw new Error("Could not read git HEAD")
+  if (tagExistsLocally(tagName)) {
+    const pointed = runCapture("git", ["rev-parse", tagName]).stdout.trim()
+    if (pointed === head) {
+      console.log(`Tag ${tagName} already points at the release commit; not recreating.`)
+      return
+    }
+    console.log(
+      `Replacing local tag ${tagName} (${pointed.slice(0, 7)} → ${head.slice(0, 7)}) to match this release.`,
+    )
+    run("git", ["tag", "-d", tagName])
+  }
+  run("git", ["tag", "-a", tagName, "-m", message])
+}
+
+function pushTag(remote, tagName) {
+  const result = spawnSync("git", ["push", remote, tagName], {
+    cwd: projectRoot,
+    stdio: "inherit",
+    env: process.env,
+  })
+  if (result.error) throw result.error
+  if (result.status !== 0) {
+    console.error(
+      `\nTag push failed. If ${tagName} exists on the remote at a different commit, run:\n` +
+        `  git push --force-with-lease ${remote} ${tagName}\n`,
+    )
+    throw new Error(`git push ${remote} ${tagName} failed (${result.status ?? "unknown"})`)
+  }
+}
+
 async function promptLine(prompt) {
   const rl = readline.createInterface({
     input: process.stdin,
@@ -247,24 +299,6 @@ async function main() {
     process.exit(1)
   }
 
-  const tagName = `v${next}`
-  const tagCheck = spawnSync("git", ["rev-parse", tagName], {
-    cwd: projectRoot,
-    encoding: "utf8",
-    stdio: "pipe",
-  })
-  if ((tagCheck.status ?? 1) === 0) {
-    console.error(`Tag ${tagName} already exists locally. Delete it or choose another version.`)
-    process.exit(1)
-  }
-
-  const lsRemote = runCapture("git", ["ls-remote", "--tags", "origin", tagName])
-  if (lsRemote.status === 0 && lsRemote.stdout.includes(`refs/tags/${tagName}`)) {
-    console.error(`Tag ${tagName} already exists on origin. Bump to a newer version.`)
-    process.exit(1)
-  }
-
-  const steps = [
     `Set package.json version → ${next}`,
     "bun run build:desktop",
     "electron-builder --publish always --mac",
@@ -303,7 +337,7 @@ async function main() {
   console.log("\nRecording release in git...")
   run("git", ["add", "package.json"])
   run("git", ["commit", "-m", `Release ${next}`])
-  run("git", ["tag", "-a", tagName, "-m", `Orbit ${next}`])
+  ensureReleaseTag(tagName, `Orbit ${next}`)
 
   const target = resolvePushTarget()
   if (target.useHead) {
@@ -311,7 +345,7 @@ async function main() {
   } else {
     run("git", ["push", target.remote, target.branch])
   }
-  run("git", ["push", target.remote, tagName])
+  pushTag(target.remote, tagName)
 
   console.log(
     `\nDone: ${tagName} is on ${target.remote} and GitHub Release should list the mac artifacts.\n`,
