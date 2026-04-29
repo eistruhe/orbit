@@ -1,6 +1,7 @@
 import {
   ArrowLeftRight,
   ChevronRight,
+  FileCode2,
   Image as ImageIcon,
   Link as LinkIcon,
 } from "lucide-react"
@@ -29,6 +30,13 @@ const tools = [
       "Preview Open Graph, Twitter, and meta tags for any public URL.",
     icon: LinkIcon,
     target: "/tools/open-graph" as const,
+  },
+  {
+    id: "svgo",
+    name: "SVGO",
+    description: "Optimize one or many SVG files with SVGO settings.",
+    icon: FileCode2,
+    target: "/tools/svgo" as const,
   },
 ]
 

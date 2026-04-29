@@ -12,6 +12,7 @@ import { SettingsLayout } from "@/components/orbit/settings-layout"
 import { SettingsPage } from "@/components/orbit/settings-page"
 import { OpenGraphPage } from "@/components/orbit/tools/open-graph-page"
 import { PxToRemPage } from "@/components/orbit/tools/px-to-rem-page"
+import { SvgoPage } from "@/components/orbit/tools/svgo-page"
 import { TinifyPage } from "@/components/orbit/tools/tinify-page"
 import { ToolsHubPage } from "@/components/orbit/tools/tools-hub-page"
 import { ToolsLayout } from "@/components/orbit/tools-layout"
@@ -74,6 +75,12 @@ const openGraphRoute = createRoute({
   component: OpenGraphPage,
 })
 
+const svgoRoute = createRoute({
+  getParentRoute: () => toolsLayoutRoute,
+  path: "svgo",
+  component: SvgoPage,
+})
+
 const settingsLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
@@ -97,6 +104,7 @@ const routeTree = rootRoute.addChildren([
     tinifyRoute,
     pxToRemRoute,
     openGraphRoute,
+    svgoRoute,
   ]),
   settingsLayoutRoute.addChildren([settingsIndexRoute]),
 ])

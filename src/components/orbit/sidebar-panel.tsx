@@ -260,6 +260,15 @@ export const SidebarPanel = memo(function SidebarPanel({
                   })
                 }
               />
+              <SubNavItem
+                label="SVGO"
+                active={pathname === "/tools/svgo"}
+                onClick={() =>
+                  startTransition(() => {
+                    navigate({ to: "/tools/svgo" })
+                  })
+                }
+              />
             </SubNavRail>
           ) : null}
         </div>

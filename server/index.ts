@@ -156,6 +156,70 @@ app.put("/api/preferences", async (c) => {
                       : current.appSettings.tinify?.apiKey,
                 }
               : current.appSettings.tinify,
+          svgo:
+            (body.appSettings as { svgo?: unknown }).svgo &&
+            typeof (body.appSettings as { svgo?: unknown }).svgo === "object"
+              ? {
+                  ...current.appSettings.svgo,
+                  ...((body.appSettings as { svgo?: unknown }).svgo as Record<
+                    string,
+                    unknown
+                  >),
+                  schemaVersion:
+                    typeof (body.appSettings as { svgo?: { schemaVersion?: unknown } })
+                      .svgo?.schemaVersion === "number"
+                      ? Math.round(
+                          (body.appSettings as { svgo: { schemaVersion: number } }).svgo
+                            .schemaVersion,
+                        )
+                      : current.appSettings.svgo?.schemaVersion,
+                  plugins:
+                    (body.appSettings as { svgo?: { plugins?: unknown } }).svgo
+                      ?.plugins &&
+                    typeof (body.appSettings as { svgo?: { plugins?: unknown } }).svgo
+                      ?.plugins === "object"
+                      ? Object.fromEntries(
+                          Object.entries(
+                            (body.appSettings as { svgo: { plugins: Record<string, unknown> } })
+                              .svgo.plugins,
+                          ).filter(
+                            (entry): entry is [string, boolean] =>
+                              typeof entry[0] === "string" &&
+                              typeof entry[1] === "boolean",
+                          ),
+                        )
+                      : current.appSettings.svgo?.plugins,
+                  multipass:
+                    typeof (body.appSettings as { svgo?: { multipass?: unknown } }).svgo
+                      ?.multipass === "boolean"
+                      ? (body.appSettings as { svgo: { multipass: boolean } }).svgo
+                          .multipass
+                      : current.appSettings.svgo?.multipass,
+                  pretty:
+                    typeof (body.appSettings as { svgo?: { pretty?: unknown } }).svgo
+                      ?.pretty === "boolean"
+                      ? (body.appSettings as { svgo: { pretty: boolean } }).svgo.pretty
+                      : current.appSettings.svgo?.pretty,
+                  floatPrecision:
+                    typeof (body.appSettings as { svgo?: { floatPrecision?: unknown } })
+                      .svgo?.floatPrecision === "number"
+                      ? (body.appSettings as { svgo: { floatPrecision: number } }).svgo
+                          .floatPrecision
+                      : current.appSettings.svgo?.floatPrecision,
+                  transformPrecision:
+                    typeof (
+                      body.appSettings as {
+                        svgo?: { transformPrecision?: unknown }
+                      }
+                    ).svgo?.transformPrecision === "number"
+                      ? (
+                          body.appSettings as {
+                            svgo: { transformPrecision: number }
+                          }
+                        ).svgo.transformPrecision
+                      : current.appSettings.svgo?.transformPrecision,
+                }
+              : current.appSettings.svgo,
         }
       : current.appSettings
   const next = {

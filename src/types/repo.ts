@@ -41,6 +41,14 @@ export type Preferences = {
     tinify?: {
       apiKey?: string
     }
+    svgo?: {
+      schemaVersion?: number
+      plugins?: Record<string, boolean>
+      multipass?: boolean
+      pretty?: boolean
+      floatPrecision?: number
+      transformPrecision?: number
+    }
   }
 }
 

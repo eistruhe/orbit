@@ -19,6 +19,14 @@ export type Preferences = {
     tinify?: {
       apiKey?: string
     }
+    svgo?: {
+      schemaVersion?: number
+      plugins?: Record<string, boolean>
+      multipass?: boolean
+      pretty?: boolean
+      floatPrecision?: number
+      transformPrecision?: number
+    }
   }
 }
 
@@ -55,16 +63,61 @@ function parseAdditionalScanRoots(input: unknown): ProjectLibrary[] {
 
 function parseAppSettings(input: unknown): Preferences["appSettings"] {
   if (!input || typeof input !== "object") return {}
-  const appSettings = input as { tinify?: unknown }
-  if (!appSettings.tinify || typeof appSettings.tinify !== "object") {
-    return {}
+  const appSettings = input as { tinify?: unknown; svgo?: unknown }
+  const output: Preferences["appSettings"] = {}
+
+  if (appSettings.tinify && typeof appSettings.tinify === "object") {
+    const tinify = appSettings.tinify as { apiKey?: unknown }
+    const parsedTinify: { apiKey?: string } = {}
+    if (typeof tinify.apiKey === "string") {
+      parsedTinify.apiKey = tinify.apiKey
+    }
+    output.tinify = parsedTinify
   }
-  const tinify = appSettings.tinify as { apiKey?: unknown }
-  const parsedTinify: { apiKey?: string } = {}
-  if (typeof tinify.apiKey === "string") {
-    parsedTinify.apiKey = tinify.apiKey
+
+  if (appSettings.svgo && typeof appSettings.svgo === "object") {
+    const svgo = appSettings.svgo as {
+      schemaVersion?: unknown
+      plugins?: unknown
+      multipass?: unknown
+      pretty?: unknown
+      floatPrecision?: unknown
+      transformPrecision?: unknown
+    }
+    output.svgo = {
+      ...(typeof svgo.schemaVersion === "number" &&
+      Number.isFinite(svgo.schemaVersion)
+        ? { schemaVersion: Math.round(svgo.schemaVersion) }
+        : {}),
+      ...(svgo.plugins &&
+      typeof svgo.plugins === "object" &&
+      !Array.isArray(svgo.plugins)
+        ? {
+            plugins: Object.fromEntries(
+              Object.entries(svgo.plugins).filter(
+                (entry): entry is [string, boolean] =>
+                  typeof entry[0] === "string" &&
+                  typeof entry[1] === "boolean",
+              ),
+            ),
+          }
+        : {}),
+      ...(typeof svgo.multipass === "boolean"
+        ? { multipass: svgo.multipass }
+        : {}),
+      ...(typeof svgo.pretty === "boolean" ? { pretty: svgo.pretty } : {}),
+      ...(typeof svgo.floatPrecision === "number" &&
+      Number.isFinite(svgo.floatPrecision)
+        ? { floatPrecision: svgo.floatPrecision }
+        : {}),
+      ...(typeof svgo.transformPrecision === "number" &&
+      Number.isFinite(svgo.transformPrecision)
+        ? { transformPrecision: svgo.transformPrecision }
+        : {}),
+    }
   }
-  return { tinify: parsedTinify }
+
+  return output
 }
 
 /**
