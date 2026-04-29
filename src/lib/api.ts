@@ -187,6 +187,55 @@ export async function fetchOgPreview(url: string): Promise<OgPreviewData> {
   return data
 }
 
+export type SchemaIssue = {
+  issueMessage: string
+  severity: "ERROR" | "WARNING"
+  dataFormat?: string
+  rootType?: string
+  location?: string
+  path?: Array<Record<string, unknown>>
+  fieldNames?: string[]
+}
+
+export type ExtractedSchemaItem = {
+  id: string
+  dataFormat: "jsonld" | "microdata" | "rdfa"
+  rootType: string
+  index: number
+  location?: string
+  source?: string
+  data: Record<string, unknown>
+}
+
+export type SchemaViewerResponse = {
+  extractedSchemas: ExtractedSchemaItem[]
+  issues: SchemaIssue[]
+  extractionErrors: string[]
+  usedSchemaOrgVocabulary: boolean
+}
+
+export async function validateSchemaMarkup(input: {
+  url?: string
+  snippet?: string
+}): Promise<SchemaViewerResponse> {
+  const res = await fetch("/api/schema/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text) as unknown as SchemaViewerResponse & {
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Schema validation failed",
+    )
+  }
+  return data
+}
+
 export async function validateTinifyKey(
   apiKey: string,
 ): Promise<TinifyKeyValidation> {

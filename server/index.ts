@@ -12,6 +12,7 @@ import { fetchOgPreview } from "./og.ts"
 import { openLocalPath, resolvePathUnderAllowedRoots } from "./open-path.ts"
 import { readPreferences, writePreferences, type ProjectLibrary } from "./prefs.ts"
 import { scanRepos } from "./scan.ts"
+import { runSchemaViewerValidation } from "./schema-viewer.ts"
 import { tinifyPaths, validateTinifyApiKey } from "./tinify.ts"
 
 /** Default avoids 8787 — commonly used by Wrangler and other local dev servers. */
@@ -440,6 +441,27 @@ app.post("/api/open", async (c) => {
 app.get("/api/og", async (c) => {
   const target = c.req.query("url")
   const result = await fetchOgPreview(target)
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400 | 500 | 502 | 504)
+  }
+  return c.json(result.data)
+})
+
+app.post("/api/schema/validate", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+  const url =
+    typeof (body as { url?: unknown }).url === "string"
+      ? (body as { url: string }).url
+      : null
+  const snippet =
+    typeof (body as { snippet?: unknown }).snippet === "string"
+      ? (body as { snippet: string }).snippet
+      : null
+
+  const result = await runSchemaViewerValidation({ url, snippet })
   if (!result.ok) {
     return c.json({ error: result.error }, result.status as 400 | 500 | 502 | 504)
   }

@@ -25,6 +25,7 @@ var __export = (target, all) => {
       set: (newValue) => all[name] = () => newValue
     });
 };
+var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
 var __require = import.meta.require;
 
 // node_modules/boolbase/index.js
@@ -4181,6 +4182,1317 @@ var require_mime_type = __commonJS((exports, module) => {
     }
     isHTML() {
       return this._subtype === "html" && this._type === "text";
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/schemaOrg.js
+var exports_schemaOrg = {};
+__export(exports_schemaOrg, {
+  default: () => SchemaOrgValidator
+});
+
+class SchemaOrgValidator {
+  static schemaCache = null;
+  constructor({ dataFormat, path, type, schemaOrgJson }) {
+    this.dataFormat = dataFormat;
+    this.path = path;
+    this.type = type;
+    this.schemaOrgJson = schemaOrgJson;
+  }
+  #stripSchema(name) {
+    if (name.startsWith("schema:")) {
+      return name.replace("schema:", "");
+    }
+    if (name.startsWith("http://schema.org/")) {
+      return name.replace("http://schema.org/", "");
+    }
+    if (name.startsWith("https://schema.org/")) {
+      return name.replace("https://schema.org/", "");
+    }
+    return name;
+  }
+  async#loadSchema() {
+    if (SchemaOrgValidator.schemaCache instanceof Promise) {
+      return SchemaOrgValidator.schemaCache;
+    }
+    SchemaOrgValidator.schemaCache = new Promise((resolve2) => {
+      const schema = {};
+      const entites = this.schemaOrgJson["@graph"];
+      entites.filter((entity) => entity["@type"] === "rdfs:Class").forEach((type) => {
+        const name = this.#stripSchema(type["@id"]);
+        schema[name] = {
+          properties: [],
+          propertiesFromParent: {}
+        };
+        if (Array.isArray(type["rdfs:subClassOf"])) {
+          schema[name].parents = type["rdfs:subClassOf"].map((parent2) => this.#stripSchema(parent2["@id"]));
+        } else if (type["rdfs:subClassOf"]) {
+          schema[name].parents = [
+            this.#stripSchema(type["rdfs:subClassOf"]["@id"])
+          ];
+        }
+      });
+      entites.filter((entity) => entity["@type"] === "rdf:Property").forEach((property) => {
+        const domainIncludes = property["schema:domainIncludes"];
+        const types2 = Array.isArray(domainIncludes) ? domainIncludes.map((domain) => this.#stripSchema(domain["@id"])) : domainIncludes ? [this.#stripSchema(domainIncludes["@id"])] : [];
+        types2.forEach((type) => {
+          if (schema[type]) {
+            schema[type].properties.push(this.#stripSchema(property["@id"]));
+          }
+        });
+      });
+      Object.keys(schema).forEach((type) => {
+        schema[type].properties.sort();
+      });
+      const processOrder = this.#getTopologicalOrder(schema);
+      this.#addInheritedProperties(schema, processOrder);
+      resolve2(schema);
+    });
+    return SchemaOrgValidator.schemaCache;
+  }
+  #getTopologicalOrder(schema) {
+    const visited = new Set;
+    const temp = new Set;
+    const order = [];
+    const visit = (typeId) => {
+      if (temp.has(typeId)) {
+        throw new Error("Cyclic inheritance detected");
+      }
+      if (visited.has(typeId)) {
+        return;
+      }
+      temp.add(typeId);
+      const type = schema[typeId];
+      if (type && type.parents) {
+        for (const parentId of type.parents) {
+          if (schema[parentId]) {
+            visit(parentId);
+          }
+        }
+      }
+      temp.delete(typeId);
+      visited.add(typeId);
+      order.push(typeId);
+    };
+    Object.keys(schema).forEach((typeId) => {
+      if (!visited.has(typeId)) {
+        visit(typeId);
+      }
+    });
+    return order;
+  }
+  #addInheritedProperties(schema, processOrder) {
+    processOrder.forEach((typeId) => {
+      const type = schema[typeId];
+      if (type.parents && type.parents.length > 0) {
+        for (const parentId of type.parents) {
+          if (schema[parentId]) {
+            type.propertiesFromParent[parentId] = [
+              ...schema[parentId].properties
+            ];
+            Object.keys(schema[parentId].propertiesFromParent).forEach((ancestorId) => {
+              if (!type.propertiesFromParent[ancestorId] && schema[parentId].propertiesFromParent[ancestorId].length > 0) {
+                type.propertiesFromParent[ancestorId] = schema[parentId].propertiesFromParent[ancestorId];
+              }
+            });
+          }
+        }
+      }
+    });
+  }
+  async validateProperty(type, property) {
+    const schema = await this.#loadSchema();
+    if (!schema[type]) {
+      return false;
+    }
+    let propertyToCheck = property;
+    if (property.endsWith("-input") || property.endsWith("-output")) {
+      propertyToCheck = property.replace(/-(input|output)$/, "");
+    }
+    if (schema[type].properties.includes(propertyToCheck)) {
+      return true;
+    }
+    return Object.keys(schema[type].propertiesFromParent).some((parent2) => {
+      return schema[type].propertiesFromParent[parent2].includes(propertyToCheck);
+    });
+  }
+  async validateType(type) {
+    const schema = await this.#loadSchema();
+    return !!schema[type];
+  }
+  async validate(data2) {
+    const issues = [];
+    if (typeof data2 === "object" && data2 !== null) {
+      if (!this.type) {
+        return [];
+      }
+      const typeId = this.#stripSchema(this.type);
+      const typeExists = await this.validateType(typeId);
+      if (!typeExists) {
+        issues.push({
+          issueMessage: `Type "${typeId}" is not a valid schema.org type`,
+          severity: "ERROR",
+          path: this.path,
+          errorType: "schemaOrg",
+          fieldNames: ["@type"]
+        });
+        return issues;
+      }
+      const properties = Object.keys(data2).filter((key) => !key.startsWith("@"));
+      await Promise.all(properties.map(async (property) => {
+        const propertyId = this.#stripSchema(property);
+        const isValid = await this.validateProperty(typeId, propertyId);
+        if (!isValid) {
+          issues.push({
+            issueMessage: `Property "${propertyId}" for type "${typeId}" is not supported by the schema.org specification`,
+            severity: "WARNING",
+            path: this.path,
+            errorType: "schemaOrg",
+            fieldNames: [propertyId]
+          });
+        }
+      }));
+    }
+    return issues;
+  }
+}
+
+// node_modules/@adobe/structured-data-validator/src/utils.js
+function isObject(obj) {
+  return obj !== null && typeof obj === "object" && !Array.isArray(obj);
+}
+
+// node_modules/@adobe/structured-data-validator/src/types/base.js
+class BaseValidator {
+  constructor({ dataFormat, path }) {
+    this.dataFormat = dataFormat;
+    this.path = path;
+  }
+  getConditions() {
+    return [];
+  }
+  validate(data2) {
+    const issues = [];
+    for (const condition of this.getConditions(data2)) {
+      const issue = condition(data2);
+      if (Array.isArray(issue)) {
+        issues.push(...issue);
+      } else if (issue) {
+        issues.push(issue);
+      }
+    }
+    return issues;
+  }
+  #valueByPath(data2, path) {
+    const parts = path.split(".");
+    let value = data2;
+    for (const part of parts) {
+      if (value === undefined || typeof value !== "object") {
+        return;
+      }
+      value = value[part];
+    }
+    return value;
+  }
+  required(name, type, ...opts) {
+    return (data2) => {
+      const value = this.#valueByPath(data2, name);
+      if (value === undefined || value === null || value === "") {
+        return {
+          issueMessage: `Required attribute "${name}" is missing`,
+          severity: "ERROR",
+          path: this.path,
+          fieldNames: [name]
+        };
+      }
+      if (type && !this.checkType(value, type, ...opts)) {
+        return {
+          issueMessage: `Invalid type for attribute "${name}"`,
+          severity: "ERROR",
+          path: this.path,
+          fieldNames: [name]
+        };
+      }
+      return null;
+    };
+  }
+  or(...conditions) {
+    return (element, index2, data2) => {
+      const issues = conditions.map((c) => c(element, index2, data2));
+      const pass = issues.some((i) => i === null || Array.isArray(i) && i.length === 0);
+      if (pass) {
+        return null;
+      }
+      const severity = issues.reduce((max, i) => {
+        if (i && i.severity === "ERROR") {
+          return "ERROR";
+        }
+        return max;
+      }, "WARNING");
+      const fieldNames = issues.flat().filter((i) => i && i.fieldNames).flatMap((i) => i.fieldNames);
+      return {
+        issueMessage: `One of the following conditions needs to be met: ${issues.flat().map((c) => c.issueMessage).join(" or ")}`,
+        severity,
+        path: this.path,
+        fieldNames: fieldNames.length > 0 ? fieldNames : []
+      };
+    };
+  }
+  recommended(name, type, ...opts) {
+    return (data2) => {
+      const value = this.#valueByPath(data2, name);
+      if (value === undefined || value === null || value === "") {
+        return {
+          issueMessage: `Missing field "${name}" (optional)`,
+          severity: "WARNING",
+          path: this.path,
+          fieldNames: [name]
+        };
+      }
+      if (type && !this.checkType(value, type, ...opts)) {
+        return {
+          issueMessage: `Invalid type for attribute "${name}"`,
+          severity: "WARNING",
+          path: this.path,
+          fieldNames: [name]
+        };
+      }
+      return null;
+    };
+  }
+  checkType(data2, type, ...value) {
+    if (type === "string" && typeof data2 !== "string") {
+      return false;
+    } else if (type === "arrayOrObject") {
+      return isObject(data2) || Array.isArray(data2);
+    } else if (type === "array" && !Array.isArray(data2)) {
+      return false;
+    } else if (type === "object") {
+      return isObject(data2);
+    } else if (type === "number") {
+      if (typeof data2 === "number") {
+        return true;
+      }
+      if (typeof data2 === "string") {
+        const num = Number(data2);
+        return !isNaN(num);
+      }
+      return false;
+    } else if (type === "date") {
+      const date = new Date(data2);
+      return !isNaN(date.getTime());
+    } else if (type === "url") {
+      let urlValues = Array.isArray(data2) ? data2 : [data2];
+      for (const url of urlValues) {
+        if (url.startsWith("data:")) {
+          return false;
+        }
+        try {
+          new URL(url, "https://example.com");
+        } catch (e) {
+          return false;
+        }
+      }
+    } else if (type === "currency") {
+      return typeof data2 === "string" && /^[A-Z]{3}$/.test(data2);
+    } else if (type === "enum" && !value.includes(data2)) {
+      return false;
+    } else if (type === "regex" && !value.test(data2)) {
+      return false;
+    } else if (type === "duration" && !this.validDurationFormat(data2)) {
+      return false;
+    }
+    return true;
+  }
+  inType(type) {
+    return this.path.length > 1 && this.path[this.path.length - 2].type === type;
+  }
+  inProperty(property) {
+    return this.path.length > 1 && this.path[this.path.length - 1].property === property;
+  }
+  validDurationFormat(time) {
+    const durationRegex = /^P(?=\d|T\d)(\d+Y)?(\d+M)?(\d+D)?(T(\d+H)?(\d+M)?(\d+S)?)?$/;
+    return durationRegex.test(time);
+  }
+}
+var init_base = () => {};
+
+// node_modules/@adobe/structured-data-validator/src/types/3DModel.js
+var exports_3DModel = {};
+__export(exports_3DModel, {
+  default: () => ThreeDModelValidator
+});
+var ThreeDModelValidator;
+var init_3DModel = __esm(() => {
+  init_base();
+  ThreeDModelValidator = class ThreeDModelValidator extends BaseValidator {
+    getConditions() {
+      return [
+        this.required("encoding"),
+        this.required("encoding.contentUrl", "url")
+      ].map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/AggregateOffer.js
+var exports_AggregateOffer = {};
+__export(exports_AggregateOffer, {
+  default: () => PriceSpecificationValidator
+});
+var PriceSpecificationValidator;
+var init_AggregateOffer = __esm(() => {
+  init_base();
+  PriceSpecificationValidator = class PriceSpecificationValidator extends BaseValidator {
+    getConditions() {
+      return [
+        this.required("lowPrice", "number"),
+        this.required("priceCurrency", "currency"),
+        this.recommended("highPrice", "number"),
+        this.recommended("offerCount", "number")
+      ].map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/Rating.js
+var exports_Rating = {};
+__export(exports_Rating, {
+  default: () => RatingValidator
+});
+var RatingValidator;
+var init_Rating = __esm(() => {
+  init_base();
+  RatingValidator = class RatingValidator extends BaseValidator {
+    getConditions() {
+      const conditions = [
+        this.required("ratingValue"),
+        this.validateRange,
+        this.recommended("bestRating"),
+        this.recommended("worstRating")
+      ];
+      return conditions.map((c) => c.bind(this));
+    }
+    validateRange(data2) {
+      const from = data2.worstRating || 0;
+      const to = data2.bestRating || 5;
+      let value = data2.ratingValue;
+      if (typeof value === "string") {
+        value = parseFloat(value);
+        if (!isNaN(value)) {
+          return null;
+        }
+      }
+      if (typeof value === "number") {
+        if (value < from || value > to) {
+          return {
+            issueMessage: `Rating is outside the specified or default range`,
+            severity: "ERROR",
+            path: this.path,
+            fieldNames: ["ratingValue"]
+          };
+        }
+      }
+      return null;
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/AggregateRating.js
+var exports_AggregateRating = {};
+__export(exports_AggregateRating, {
+  default: () => AggregateRatingValidator
+});
+var AggregateRatingValidator;
+var init_AggregateRating = __esm(() => {
+  init_Rating();
+  AggregateRatingValidator = class AggregateRatingValidator extends RatingValidator {
+    getConditions() {
+      const conditions = super.getConditions();
+      conditions.push(this.or(this.required("ratingCount", "number"), this.required("reviewCount", "number")));
+      if (this.path.length === 1) {
+        conditions.push(this.required("itemReviewed"), this.required("itemReviewed.name"));
+      }
+      return conditions.map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/Brand.js
+var exports_Brand = {};
+__export(exports_Brand, {
+  default: () => Brand
+});
+var Brand;
+var init_Brand = __esm(() => {
+  init_base();
+  Brand = class Brand extends BaseValidator {
+    getConditions() {
+      return [this.required("name")].map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/BreadcrumbList.js
+var exports_BreadcrumbList = {};
+__export(exports_BreadcrumbList, {
+  default: () => BreadcrumbListValidator
+});
+var BreadcrumbListValidator;
+var init_BreadcrumbList = __esm(() => {
+  init_base();
+  BreadcrumbListValidator = class BreadcrumbListValidator extends BaseValidator {
+    getConditions() {
+      return [
+        this.required("itemListElement", "arrayOrObject"),
+        this.atLeastTwoItems,
+        this.validateItemUrl
+      ].map((c) => c.bind(this));
+    }
+    atLeastTwoItems(data2) {
+      if (data2["itemListElement"] && Array.isArray(data2["itemListElement"]) && data2["itemListElement"].length < 2 || isObject(data2["itemListElement"])) {
+        return {
+          issueMessage: "At least two ListItems are required",
+          severity: "WARNING",
+          path: this.path,
+          fieldNames: ["itemListElement"]
+        };
+      }
+      return null;
+    }
+    validateItemUrl(data2) {
+      if (!data2["itemListElement"]) {
+        return null;
+      }
+      const items = [];
+      if (Array.isArray(data2["itemListElement"])) {
+        items.push(...data2["itemListElement"]);
+      } else if (isObject(data2["itemListElement"])) {
+        items.push(data2["itemListElement"]);
+      }
+      const allPositionsAreNumbers = items.every((item) => this.checkType(item.position, "number"));
+      let lastItem = null;
+      if (allPositionsAreNumbers) {
+        lastItem = items.reduce((acc, item) => {
+          if (Number(item.position) > Number(acc.position)) {
+            return item;
+          }
+          return acc;
+        }, items[0]);
+      }
+      const issues = [];
+      for (const [index2, listItem] of items.entries()) {
+        const newPath = [
+          ...this.path,
+          {
+            type: listItem["@type"] ? listItem["@type"] : "ListItem",
+            index: index2,
+            length: items.length,
+            property: "itemListElement"
+          }
+        ];
+        const isLast = allPositionsAreNumbers ? listItem === lastItem : false;
+        let urlToCheck;
+        let urlPath;
+        if (this.checkType(listItem.item, "object")) {
+          urlToCheck = listItem.item["@id"];
+          urlPath = "item.@id";
+        } else if (listItem.item) {
+          urlToCheck = listItem.item;
+          urlPath = "item";
+        }
+        if (isLast && !urlToCheck) {
+          continue;
+        }
+        try {
+          if (!urlToCheck) {
+            throw 'Field "item" with URL is missing';
+          }
+          if (urlToCheck.startsWith("http://") || urlToCheck.startsWith("https://") || this.dataFormat === "jsonld") {
+            try {
+              new URL(urlToCheck);
+            } catch (e) {
+              throw `Invalid URL in field "${urlPath}"`;
+            }
+            continue;
+          }
+          if (urlToCheck === "/" && this.dataFormat === "microdata") {
+            continue;
+          }
+          if (this.dataFormat === "rdfa" || this.dataFormat === "microdata") {
+            const urlWithoutParams = urlToCheck.split("?")[0].split("#")[0];
+            if (!urlWithoutParams.match(/^\/[a-z0-9\-/]+$/)) {
+              throw `Invalid URL in field "${urlPath}"`;
+            }
+          }
+        } catch (e) {
+          issues.push({
+            issueMessage: e,
+            severity: "WARNING",
+            path: newPath,
+            fieldNames: [urlPath || "item"]
+          });
+        }
+      }
+      return issues;
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/Certification.js
+var exports_Certification = {};
+__export(exports_Certification, {
+  default: () => CertificationValidator
+});
+var CertificationValidator;
+var init_Certification = __esm(() => {
+  init_base();
+  CertificationValidator = class CertificationValidator extends BaseValidator {
+    getConditions() {
+      return [
+        this.required("issuedBy"),
+        this.required("name"),
+        this.or(this.recommended("certificationIdentification"), this.recommended("certificationRating"))
+      ].map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/DefinedRegion.js
+var exports_DefinedRegion = {};
+__export(exports_DefinedRegion, {
+  default: () => DefinedRegionValidator
+});
+var DefinedRegionValidator;
+var init_DefinedRegion = __esm(() => {
+  init_base();
+  DefinedRegionValidator = class DefinedRegionValidator extends BaseValidator {
+    getConditions() {
+      return [
+        this.required("addressCountry", "string"),
+        this.or(this.recommended("addressRegion"), this.recommended("postalCode")),
+        this.regionOrPostalCode
+      ].map((c) => c.bind(this));
+    }
+    regionOrPostalCode(data2) {
+      if (data2["addressRegion"] && data2["postalCode"]) {
+        return {
+          issueMessage: "Only one of addressRegion or postalCode can be used",
+          severity: "WARNING",
+          path: this.path,
+          fieldNames: ["addressRegion", "postalCode"]
+        };
+      }
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/ImageObject.js
+var exports_ImageObject = {};
+__export(exports_ImageObject, {
+  default: () => ImageObjectValidator
+});
+var ImageObjectValidator;
+var init_ImageObject = __esm(() => {
+  init_base();
+  ImageObjectValidator = class ImageObjectValidator extends BaseValidator {
+    getConditions() {
+      const conditions = [
+        this.or(this.required("contentUrl", "url"), this.required("url", "url"))
+      ];
+      if (this.path.length === 1) {
+        conditions.push(this.or(this.required("creator"), this.required("creditText"), this.required("copyrightNotice"), this.required("license")), this.recommended("acquireLicensePage", "url"), this.recommended("creator"), this.recommended("creditText"), this.recommended("copyrightNotice"), this.recommended("license"));
+      }
+      return conditions.map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/VideoObject.js
+var exports_VideoObject = {};
+__export(exports_VideoObject, {
+  default: () => VideoObjectValidator
+});
+var VideoObjectValidator;
+var init_VideoObject = __esm(() => {
+  init_base();
+  VideoObjectValidator = class VideoObjectValidator extends BaseValidator {
+    getConditions() {
+      const conditions = [
+        this.required("name", "string"),
+        this.required("thumbnailUrl"),
+        this.required("uploadDate", "date"),
+        this.recommended("description", "string"),
+        this.recommended("duration", "duration"),
+        this.recommended("expires", "date"),
+        this.recommended("hasPart"),
+        this.recommended("publication"),
+        this.or(this.recommended("contentUrl", "url"), this.recommended("embedUrl", "url")),
+        this.or(this.recommended("ineligibleRegion"), this.recommended("regionsAllowed")),
+        this.or(this.recommended("interactionStatistic"), this.recommended("interactionCount"))
+      ];
+      return conditions.map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/Clip.js
+var exports_Clip = {};
+__export(exports_Clip, {
+  default: () => ClipValidator
+});
+var ClipValidator;
+var init_Clip = __esm(() => {
+  init_base();
+  ClipValidator = class ClipValidator extends BaseValidator {
+    getConditions() {
+      const conditions = [
+        this.required("name", "string"),
+        this.required("startOffset", "number"),
+        this.required("url", "url"),
+        this.recommended("endOffset", "number")
+      ];
+      return conditions.map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/BroadcastEvent.js
+var exports_BroadcastEvent = {};
+__export(exports_BroadcastEvent, {
+  default: () => BroadcastEventValidator
+});
+var BroadcastEventValidator;
+var init_BroadcastEvent = __esm(() => {
+  init_base();
+  BroadcastEventValidator = class BroadcastEventValidator extends BaseValidator {
+    getConditions() {
+      const conditions = [
+        this.required("startDate", "date"),
+        this.required("endDate", "date"),
+        this.required("isLiveBroadcast", "boolean")
+      ];
+      return conditions.map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/SeekToAction.js
+var exports_SeekToAction = {};
+__export(exports_SeekToAction, {
+  default: () => SeekToActionValidator
+});
+var SeekToActionValidator;
+var init_SeekToAction = __esm(() => {
+  init_base();
+  SeekToActionValidator = class SeekToActionValidator extends BaseValidator {
+    getConditions() {
+      const conditions = [
+        this.required("target"),
+        this.required("startOffset-input")
+      ];
+      return conditions.map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/ListItem.js
+var exports_ListItem = {};
+__export(exports_ListItem, {
+  default: () => ListItemValidator
+});
+var ListItemValidator;
+var init_ListItem = __esm(() => {
+  init_base();
+  ListItemValidator = class ListItemValidator extends BaseValidator {
+    constructor(config) {
+      super(config);
+    }
+    getConditions() {
+      return [
+        this.or(this.required("name", "string"), this.required("item.name", "string")),
+        this.required("position")
+      ].map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/MerchantReturnPolicy.js
+var exports_MerchantReturnPolicy = {};
+__export(exports_MerchantReturnPolicy, {
+  default: () => MerchantReturnPolicyValidator
+});
+var MerchantReturnPolicyValidator;
+var init_MerchantReturnPolicy = __esm(() => {
+  init_base();
+  MerchantReturnPolicyValidator = class MerchantReturnPolicyValidator extends BaseValidator {
+    getConditions(data2) {
+      const conditions = [this.countryOrLink];
+      const category = data2.returnPolicyCategory;
+      if (category && (category.includes("MerchantReturnFiniteReturnWindow") || category.includes("MerchantReturnUnlimitedWindow"))) {
+        if (category.includes("MerchantReturnFiniteReturnWindow")) {
+          conditions.push(this.recommended("merchantReturnDays", "number"));
+        }
+        conditions.push(this.recommended("returnFees"), this.recommended("returnMethod"));
+        if (data2.returnFees && data2.returnFees.includes("ReturnShippingFees")) {
+          conditions.push(this.recommended("returnShippingFeesAmount"));
+        }
+        if (this.inType("Organization") && this.inProperty("hasMerchantReturnPolicy")) {
+          conditions.push(this.recommended("customerRemorseReturnFees"), this.recommended("customerRemorseReturnLabelSource"), this.recommended("customerRemorseReturnShippingFeesAmount"), this.recommended("itemCondition"), this.recommended("itemDefectReturnFees"), this.recommended("itemDefectReturnLabelSource"), this.recommended("itemDefectReturnShippingFeesAmount"), this.recommended("refundType"), this.recommended("restockingFee"), this.recommended("returnLabelSource"), this.recommended("returnPolicyCountry"));
+        }
+      }
+      return conditions.map((c) => c.bind(this));
+    }
+    countryOrLink(data2) {
+      let valid = false;
+      if (this.inProperty("hasMerchantReturnPolicy") && this.inType("Organization") && this.required("merchantReturnLink")(data2) === null) {
+        valid = true;
+      } else if (this.required("applicableCountry")(data2) === null && this.required("returnPolicyCategory")(data2) === null) {
+        valid = true;
+      }
+      if (!valid) {
+        return {
+          issueMessage: "Either applicableCountry and returnPolicyCategory or merchantReturnLink must be present",
+          severity: "ERROR",
+          path: this.path,
+          fieldNames: [
+            "applicableCountry",
+            "returnPolicyCategory",
+            "merchantReturnLink"
+          ]
+        };
+      }
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/Offer.js
+var exports_Offer = {};
+__export(exports_Offer, {
+  default: () => PriceSpecificationValidator2
+});
+var PriceSpecificationValidator2;
+var init_Offer = __esm(() => {
+  init_base();
+  PriceSpecificationValidator2 = class PriceSpecificationValidator2 extends BaseValidator {
+    getConditions() {
+      const conditions = [];
+      const offerIndex = this.path.findIndex((pathElement) => pathElement.type === "Offer");
+      const productIsParent = offerIndex > 0 ? this.path[offerIndex - 1].type === "Product" : false;
+      if (productIsParent) {
+        conditions.push(this.or(this.required("price", "number"), this.required("priceSpecification.price", "number")), this.recommended("availability"), this.or(this.recommended("priceCurrency", "currency"), this.recommended("priceSpecification.priceCurrency", "currency")), this.recommended("priceValidUntil", "date"));
+      }
+      return conditions.map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/OfferShippingDetails.js
+var exports_OfferShippingDetails = {};
+__export(exports_OfferShippingDetails, {
+  default: () => OfferShippingDetailsValidator
+});
+var OfferShippingDetailsValidator;
+var init_OfferShippingDetails = __esm(() => {
+  init_base();
+  OfferShippingDetailsValidator = class OfferShippingDetailsValidator extends BaseValidator {
+    getConditions() {
+      return [
+        this.required("deliveryTime"),
+        this.required("shippingDestination"),
+        this.required("shippingRate"),
+        this.required("shippingRate.currency"),
+        this.or(this.required("shippingRate.value"), this.required("shippingRate.maxValue"))
+      ].map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/Organization.js
+var exports_Organization = {};
+__export(exports_Organization, {
+  default: () => OrganizationValidator
+});
+var OrganizationValidator;
+var init_Organization = __esm(() => {
+  init_base();
+  OrganizationValidator = class OrganizationValidator extends BaseValidator {
+    getConditions() {
+      return [this.required("name")].map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/PeopleAudience.js
+var exports_PeopleAudience = {};
+__export(exports_PeopleAudience, {
+  default: () => PeopleAudienceValidator
+});
+var PeopleAudienceValidator;
+var init_PeopleAudience = __esm(() => {
+  init_base();
+  PeopleAudienceValidator = class PeopleAudienceValidator extends BaseValidator {
+    getConditions(data2) {
+      const conditions = [
+        this.recommended("suggestedGender"),
+        this.or(this.recommended("suggestedMinAge", "number"), this.recommended("suggestedAge.minValue", "number"))
+      ];
+      const minAge = data2.suggestedMinAge || data2.suggestedAge?.minValue;
+      if (minAge && minAge < 13) {
+        conditions.push(this.or(this.recommended("suggestedMaxAge", "number"), this.recommended("suggestedAge.maxValue", "number")));
+      }
+      return conditions.map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/Person.js
+var exports_Person = {};
+__export(exports_Person, {
+  default: () => PersonValidator
+});
+var PersonValidator;
+var init_Person = __esm(() => {
+  init_base();
+  PersonValidator = class PersonValidator extends BaseValidator {
+    getConditions() {
+      return [this.required("name")].map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/PriceSpecification.js
+var exports_PriceSpecification = {};
+__export(exports_PriceSpecification, {
+  default: () => PriceSpecificationValidator3
+});
+var PriceSpecificationValidator3;
+var init_PriceSpecification = __esm(() => {
+  init_base();
+  PriceSpecificationValidator3 = class PriceSpecificationValidator3 extends BaseValidator {
+    getConditions() {
+      return [
+        this.required("price", "number"),
+        this.recommended("priceCurrency", "currency")
+      ].map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/Product.js
+var exports_Product = {};
+__export(exports_Product, {
+  default: () => ProductValidator
+});
+var ProductValidator;
+var init_Product = __esm(() => {
+  init_base();
+  ProductValidator = class ProductValidator extends BaseValidator {
+    getConditions() {
+      return [
+        this.required("name"),
+        this.ratingReviewOrOffers,
+        this.notesCount
+      ].map((c) => c.bind(this));
+    }
+    notesCount(data2) {
+      if (!data2.review) {
+        return null;
+      }
+      const issues = [];
+      let notes = 0;
+      const reviews = Array.isArray(data2.review) ? data2.review : [data2.review];
+      for (const review of reviews) {
+        if (review.positiveNotes && review.positiveNotes.itemListElement || review.negativeNotes && review.negativeNotes.itemListElement) {
+          notes += review.positiveNotes?.itemListElement?.length || 0;
+          notes += review.negativeNotes?.itemListElement?.length || 0;
+        }
+      }
+      if (notes === 1) {
+        issues.push({
+          issueMessage: "At least 2 notes, either positive or negative, are required",
+          severity: "WARNING",
+          path: this.path,
+          fieldNames: ["review.positiveNotes", "review.negativeNotes"]
+        });
+      }
+      return issues;
+    }
+    ratingReviewOrOffers(data2) {
+      const issues = [];
+      if (!data2.aggregateRating && !data2.offers && !data2.review) {
+        issues.push({
+          issueMessage: 'One of the following attributes is required: "aggregateRating", "offers" or "review"',
+          severity: "ERROR",
+          path: this.path,
+          fieldNames: ["aggregateRating", "offers", "review"]
+        });
+      }
+      if (data2.offers && (!data2.aggregateRating || !data2.review)) {
+        const aggregateRating = this.recommended("aggregateRating", "object")(data2);
+        if (aggregateRating) {
+          issues.push(aggregateRating);
+        }
+        const review = this.recommended("review", "object")(data2);
+        if (review) {
+          issues.push(review);
+        }
+      }
+      return issues;
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/ProductMerchant.js
+var exports_ProductMerchant = {};
+__export(exports_ProductMerchant, {
+  default: () => ProductMerchantValidator
+});
+var ProductMerchantValidator;
+var init_ProductMerchant = __esm(() => {
+  init_base();
+  ProductMerchantValidator = class ProductMerchantValidator extends BaseValidator {
+    getConditions() {
+      return [
+        this.required("image"),
+        this.required("offers"),
+        this.recommended("audience"),
+        this.recommended("brand"),
+        this.recommended("color", "string"),
+        this.recommended("description", "string"),
+        this.recommended("hasCertification"),
+        this.recommended("inProductGroupWithID", "string"),
+        this.recommended("isVariantOf"),
+        this.recommended("material", "string"),
+        this.recommended("mpn", "string"),
+        this.recommended("pattern", "string"),
+        this.recommended("size"),
+        this.recommended("sku", "string"),
+        this.recommended("subjectOf"),
+        this.validateGtin
+      ].map((c) => c.bind(this));
+    }
+    validateGtin(data2) {
+      let gtinFields = ["gtin", "gtin8", "gtin12", "gtin13", "gtin14", "isbn"];
+      const productPass = this.or(...gtinFields.map((field) => this.recommended(field, "string")))(data2) === null;
+      let offerPass = false;
+      if (data2.offers && typeof data2.offers === "object" && !Array.isArray(data2.offers)) {
+        offerPass = this.or(...gtinFields.map((field) => this.recommended(`offers.${field}`, "string")))(data2.offers) === null;
+      }
+      let allOffersPass = false;
+      if (data2.offers && Array.isArray(data2.offers)) {
+        allOffersPass = true;
+        data2.offers.forEach((offer, index2) => {
+          const offerPass2 = this.or(...gtinFields.map((field) => this.recommended(field, "string")))(offer, index2, data2) === null;
+          if (!offerPass2) {
+            allOffersPass = false;
+          }
+        });
+      }
+      if (productPass || offerPass || allOffersPass) {
+        return null;
+      }
+      return {
+        issueMessage: `Missing one of field ${gtinFields.map((a) => `"${a}"`).join(", ")} on either product or all offers`,
+        severity: "WARNING",
+        path: this.path,
+        fieldNames: gtinFields
+      };
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/QuantitativeValue.js
+var exports_QuantitativeValue = {};
+__export(exports_QuantitativeValue, {
+  default: () => QuantitativeValueValidator
+});
+var QuantitativeValueValidator;
+var init_QuantitativeValue = __esm(() => {
+  init_base();
+  QuantitativeValueValidator = class QuantitativeValueValidator extends BaseValidator {
+    getConditions() {
+      if (this.inType("UnitPriceSpecification")) {
+        return [
+          this.required("unitCode"),
+          this.required("value"),
+          this.recommended("valueReference")
+        ].map((c) => c.bind(this));
+      }
+      if (this.inType("ShippingDeliveryTime")) {
+        return [
+          this.required("maxValue"),
+          this.required("minValue"),
+          this.required("unitCode")
+        ].map((c) => c.bind(this));
+      }
+      return [];
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/Review.js
+var exports_Review = {};
+__export(exports_Review, {
+  default: () => ReviewValidator
+});
+var ReviewValidator;
+var init_Review = __esm(() => {
+  init_base();
+  ReviewValidator = class ReviewValidator extends BaseValidator {
+    getConditions() {
+      const conditions = [
+        this.required("author"),
+        this.required("reviewRating"),
+        this.recommended("datePublished", "date")
+      ];
+      if (this.path.length === 1) {
+        conditions.push(this.required("itemReviewed"), this.required("itemReviewed.name"));
+      }
+      return conditions.map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/ShippingDeliveryTime.js
+var exports_ShippingDeliveryTime = {};
+__export(exports_ShippingDeliveryTime, {
+  default: () => ShippingDeliveryTimeValidator
+});
+var ShippingDeliveryTimeValidator;
+var init_ShippingDeliveryTime = __esm(() => {
+  init_base();
+  ShippingDeliveryTimeValidator = class ShippingDeliveryTimeValidator extends BaseValidator {
+    getConditions() {
+      return [
+        this.recommended("handlingTime"),
+        this.recommended("transitTime")
+      ].map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/SizeSpecification.js
+var exports_SizeSpecification = {};
+__export(exports_SizeSpecification, {
+  default: () => SizeSpecificationValidator
+});
+var SizeSpecificationValidator;
+var init_SizeSpecification = __esm(() => {
+  init_base();
+  SizeSpecificationValidator = class SizeSpecificationValidator extends BaseValidator {
+    getConditions() {
+      return [
+        this.recommended("name"),
+        this.recommended("sizeGroup"),
+        this.recommended("sizeSystem")
+      ].map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/JobPosting.js
+var exports_JobPosting = {};
+__export(exports_JobPosting, {
+  default: () => JobPostingValidator
+});
+var JobPostingValidator;
+var init_JobPosting = __esm(() => {
+  init_base();
+  JobPostingValidator = class JobPostingValidator extends BaseValidator {
+    getConditions() {
+      const conditions = [
+        this.required("title", "string"),
+        this.required("description", "string"),
+        this.required("datePosted", "date"),
+        this.required("hiringOrganization"),
+        this.checkJobLocations,
+        this.recommended("applicantLocationRequirements"),
+        this.recommended("baseSalary"),
+        this.recommended("directApply"),
+        this.recommended("employmentType"),
+        this.recommended("identifier"),
+        this.recommended("jobLocationType", "string"),
+        this.recommended("validThrough", "date")
+      ];
+      return conditions.map((c) => c.bind(this));
+    }
+    checkJobLocations(data2) {
+      const issues = [];
+      if (data2.jobLocationType === "TELECOMMUTE") {
+        if (!data2.applicantLocationRequirements) {
+          const applicantLocationIssue = this.required("applicantLocationRequirements")(data2);
+          if (applicantLocationIssue) {
+            issues.push(applicantLocationIssue);
+          }
+        }
+      } else {
+        if (!data2.applicantLocationRequirements) {
+          const jobLocationIssues = this.required("jobLocation")(data2);
+          if (jobLocationIssues) {
+            issues.push(jobLocationIssues);
+          }
+        }
+      }
+      if (data2.jobLocation) {
+        const addressCountryIssues = this.required("jobLocation.address.addressCountry")(data2);
+        if (addressCountryIssues) {
+          issues.push(addressCountryIssues);
+        }
+      }
+      return issues;
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/Recipe.js
+var exports_Recipe = {};
+__export(exports_Recipe, {
+  default: () => RecipeValidator
+});
+var RecipeValidator;
+var init_Recipe = __esm(() => {
+  init_base();
+  RecipeValidator = class RecipeValidator extends BaseValidator {
+    getConditions() {
+      const conditions = [
+        this.validateImage,
+        this.required("name", "string"),
+        this.recommended("aggregateRating"),
+        this.recommended("author"),
+        this.recommended("datePublished", "date"),
+        this.recommended("description", "string"),
+        this.recommended("keywords", "string"),
+        this.recommended("recipeCategory", "string"),
+        this.recommended("recipeCuisine", "string"),
+        this.recommended("recipeIngredient"),
+        this.recommended("recipeInstructions"),
+        this.validateNutritionAndYield,
+        this.validateCookTime,
+        this.recommended("video")
+      ];
+      return conditions.map((c) => c.bind(this));
+    }
+    validateNutritionAndYield(data2) {
+      const issues = [];
+      if (data2.nutrition?.calories && !data2.recipeYield) {
+        issues.push(this.required("recipeYield")(data2));
+      } else {
+        issues.push(this.recommended("recipeYield")(data2));
+        issues.push(this.recommended("nutrition.calories")(data2));
+      }
+      return issues.filter((issue) => issue !== null);
+    }
+    validateCookTime(data2) {
+      const issues = [];
+      const hasCookTime = data2.cookTime !== undefined && data2.cookTime !== null;
+      const hasPrepTime = data2.prepTime !== undefined && data2.prepTime !== null;
+      const hasTotalTime = data2.totalTime !== undefined && data2.totalTime !== null;
+      if (hasCookTime || hasPrepTime) {
+        issues.push(this.recommended("prepTime", "duration")(data2));
+        issues.push(this.recommended("cookTime", "duration")(data2));
+        if (hasTotalTime) {
+          issues.push(this.recommended("totalTime", "duration")(data2));
+        }
+      } else {
+        issues.push(this.recommended("totalTime", "duration")(data2));
+      }
+      return issues.filter((issue) => issue !== null);
+    }
+    validateImage(data2) {
+      const issues = [];
+      if (Array.isArray(data2.image)) {
+        issues.push(this.required("image", "url")(data2));
+      } else {
+        issues.push(this.required("image")(data2));
+      }
+      return issues.filter((issue) => issue !== null);
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/HowToStep.js
+var exports_HowToStep = {};
+__export(exports_HowToStep, {
+  default: () => HowToStepValidator
+});
+var HowToStepValidator;
+var init_HowToStep = __esm(() => {
+  init_base();
+  HowToStepValidator = class HowToStepValidator extends BaseValidator {
+    getConditions() {
+      const conditions = [
+        this.textAndItemList,
+        this.recommended("image"),
+        this.recommended("name", "string"),
+        this.recommended("url", "url"),
+        this.recommended("video")
+      ];
+      return conditions.map((c) => c.bind(this));
+    }
+    textAndItemList(data2) {
+      const issues = [];
+      const hasItemList = data2.itemListElement !== undefined && data2.itemListElement !== null;
+      const hasText = data2.text !== undefined && data2.text !== null;
+      if (hasItemList || hasText) {
+        issues.push(this.recommended("text")(data2));
+        issues.push(this.recommended("itemListElement")(data2));
+      } else {
+        issues.push(this.or(this.required("text"), this.required("itemListElement"))(data2));
+      }
+      return issues.filter((issue) => issue !== null);
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/HowToSection.js
+var exports_HowToSection = {};
+__export(exports_HowToSection, {
+  default: () => HowToSectionValidator
+});
+var HowToSectionValidator;
+var init_HowToSection = __esm(() => {
+  init_base();
+  HowToSectionValidator = class HowToSectionValidator extends BaseValidator {
+    getConditions() {
+      const conditions = [
+        this.required("itemListElement"),
+        this.required("name", "string")
+      ];
+      return conditions.map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/HowToDirection.js
+var exports_HowToDirection = {};
+__export(exports_HowToDirection, {
+  default: () => HowToDirectionValidator
+});
+var HowToDirectionValidator;
+var init_HowToDirection = __esm(() => {
+  init_base();
+  HowToDirectionValidator = class HowToDirectionValidator extends BaseValidator {
+    getConditions() {
+      const conditions = [this.required("text", "string")];
+      return conditions.map((c) => c.bind(this));
+    }
+  };
+});
+
+// node_modules/@adobe/structured-data-validator/src/types/HowToTip.js
+var exports_HowToTip = {};
+__export(exports_HowToTip, {
+  default: () => HowToTipValidator
+});
+var HowToTipValidator;
+var init_HowToTip = __esm(() => {
+  init_base();
+  HowToTipValidator = class HowToTipValidator extends BaseValidator {
+    getConditions() {
+      const conditions = [this.required("text", "string")];
+      return conditions.map((c) => c.bind(this));
     }
   };
 });
@@ -19575,15 +20887,29 @@ function parseAppSettings(input) {
   if (!input || typeof input !== "object")
     return {};
   const appSettings = input;
-  if (!appSettings.tinify || typeof appSettings.tinify !== "object") {
-    return {};
+  const output = {};
+  if (appSettings.tinify && typeof appSettings.tinify === "object") {
+    const tinify = appSettings.tinify;
+    const parsedTinify = {};
+    if (typeof tinify.apiKey === "string") {
+      parsedTinify.apiKey = tinify.apiKey;
+    }
+    output.tinify = parsedTinify;
   }
-  const tinify = appSettings.tinify;
-  const parsedTinify = {};
-  if (typeof tinify.apiKey === "string") {
-    parsedTinify.apiKey = tinify.apiKey;
+  if (appSettings.svgo && typeof appSettings.svgo === "object") {
+    const svgo = appSettings.svgo;
+    output.svgo = {
+      ...typeof svgo.schemaVersion === "number" && Number.isFinite(svgo.schemaVersion) ? { schemaVersion: Math.round(svgo.schemaVersion) } : {},
+      ...svgo.plugins && typeof svgo.plugins === "object" && !Array.isArray(svgo.plugins) ? {
+        plugins: Object.fromEntries(Object.entries(svgo.plugins).filter((entry) => typeof entry[0] === "string" && typeof entry[1] === "boolean"))
+      } : {},
+      ...typeof svgo.multipass === "boolean" ? { multipass: svgo.multipass } : {},
+      ...typeof svgo.pretty === "boolean" ? { pretty: svgo.pretty } : {},
+      ...typeof svgo.floatPrecision === "number" && Number.isFinite(svgo.floatPrecision) ? { floatPrecision: svgo.floatPrecision } : {},
+      ...typeof svgo.transformPrecision === "number" && Number.isFinite(svgo.transformPrecision) ? { transformPrecision: svgo.transformPrecision } : {}
+    };
   }
-  return { tinify: parsedTinify };
+  return output;
 }
 async function readPreferences() {
   try {
@@ -19957,6 +21283,1247 @@ async function scanRepos(scanRoot, orbitLibraryId = "primary") {
   });
 }
 
+// node_modules/@adobe/structured-data-validator/src/validator.js
+class Validator {
+  constructor(schemaOrgJson) {
+    this.schemaOrgJson = schemaOrgJson;
+    if (this.schemaOrgJson) {
+      this.globalHandlers = [() => Promise.resolve().then(() => exports_schemaOrg)];
+    }
+    this.debug = false;
+    this.registeredHandlers = {
+      "3DModel": [() => Promise.resolve().then(() => (init_3DModel(), exports_3DModel))],
+      AggregateOffer: [() => Promise.resolve().then(() => (init_AggregateOffer(), exports_AggregateOffer))],
+      AggregateRating: [() => Promise.resolve().then(() => (init_AggregateRating(), exports_AggregateRating))],
+      Brand: [() => Promise.resolve().then(() => (init_Brand(), exports_Brand))],
+      BreadcrumbList: [() => Promise.resolve().then(() => (init_BreadcrumbList(), exports_BreadcrumbList))],
+      Certification: [() => Promise.resolve().then(() => (init_Certification(), exports_Certification))],
+      DefinedRegion: [() => Promise.resolve().then(() => (init_DefinedRegion(), exports_DefinedRegion))],
+      ImageObject: [() => Promise.resolve().then(() => (init_ImageObject(), exports_ImageObject))],
+      VideoObject: [() => Promise.resolve().then(() => (init_VideoObject(), exports_VideoObject))],
+      Clip: [() => Promise.resolve().then(() => (init_Clip(), exports_Clip))],
+      BroadcastEvent: [() => Promise.resolve().then(() => (init_BroadcastEvent(), exports_BroadcastEvent))],
+      SeekToAction: [() => Promise.resolve().then(() => (init_SeekToAction(), exports_SeekToAction))],
+      ListItem: [() => Promise.resolve().then(() => (init_ListItem(), exports_ListItem))],
+      MerchantReturnPolicy: [() => Promise.resolve().then(() => (init_MerchantReturnPolicy(), exports_MerchantReturnPolicy))],
+      Offer: [() => Promise.resolve().then(() => (init_Offer(), exports_Offer))],
+      OfferShippingDetails: [() => Promise.resolve().then(() => (init_OfferShippingDetails(), exports_OfferShippingDetails))],
+      Organization: [() => Promise.resolve().then(() => (init_Organization(), exports_Organization))],
+      PeopleAudience: [() => Promise.resolve().then(() => (init_PeopleAudience(), exports_PeopleAudience))],
+      Person: [() => Promise.resolve().then(() => (init_Person(), exports_Person))],
+      PriceSpecification: [() => Promise.resolve().then(() => (init_PriceSpecification(), exports_PriceSpecification))],
+      Product: [
+        () => Promise.resolve().then(() => (init_Product(), exports_Product)),
+        () => Promise.resolve().then(() => (init_ProductMerchant(), exports_ProductMerchant))
+      ],
+      QuantitativeValue: [() => Promise.resolve().then(() => (init_QuantitativeValue(), exports_QuantitativeValue))],
+      Rating: [() => Promise.resolve().then(() => (init_Rating(), exports_Rating))],
+      Review: [() => Promise.resolve().then(() => (init_Review(), exports_Review))],
+      ShippingDeliveryTime: [() => Promise.resolve().then(() => (init_ShippingDeliveryTime(), exports_ShippingDeliveryTime))],
+      SizeSpecification: [() => Promise.resolve().then(() => (init_SizeSpecification(), exports_SizeSpecification))],
+      UnitPriceSpecification: [() => Promise.resolve().then(() => (init_PriceSpecification(), exports_PriceSpecification))],
+      JobPosting: [() => Promise.resolve().then(() => (init_JobPosting(), exports_JobPosting))],
+      Recipe: [() => Promise.resolve().then(() => (init_Recipe(), exports_Recipe))],
+      HowToStep: [() => Promise.resolve().then(() => (init_HowToStep(), exports_HowToStep))],
+      HowToSection: [() => Promise.resolve().then(() => (init_HowToSection(), exports_HowToSection))],
+      HowToDirection: [() => Promise.resolve().then(() => (init_HowToDirection(), exports_HowToDirection))],
+      HowToTip: [() => Promise.resolve().then(() => (init_HowToTip(), exports_HowToTip))]
+    };
+  }
+  async#validateSubtree(data2, rootData, dataFormat, path = []) {
+    const spacing = "  " + "  ".repeat(path.length);
+    if (Array.isArray(data2)) {
+      const results = await Promise.all(data2.map(async (item, index2) => {
+        let last2 = path[path.length - 1];
+        last2 = { ...last2, index: index2, length: data2.length };
+        if (item["@type"]) {
+          last2.type = item["@type"];
+        }
+        return this.#validateSubtree(item, rootData, dataFormat, [
+          ...path.slice(0, -1),
+          last2
+        ]);
+      }));
+      return results.flat();
+    }
+    if (typeof data2 === "object" && data2 !== null) {
+      if (!data2["@type"]) {
+        this.debug && console.warn(`${spacing}  WARN: No type found for item`);
+        return [];
+      }
+      let types2 = [];
+      if (Array.isArray(data2["@type"])) {
+        types2 = data2["@type"];
+      } else {
+        types2 = [data2["@type"]];
+      }
+      const typeIssues = await Promise.all(types2.map(async (type) => {
+        this.debug && console.debug(`${spacing}VALIDATE TYPE:`, type, JSON.stringify(path));
+        const handlers = [...this.registeredHandlers[type] || []];
+        if (handlers.length === 0) {
+          this.debug && console.warn(`${spacing}  WARN: No handlers registered for type: ${type}`);
+        }
+        handlers.push(...this.globalHandlers || []);
+        if (handlers.length === 0) {
+          return [];
+        }
+        const handlerPromises = handlers.map(async (handler) => {
+          const handlerClass = (await handler()).default;
+          const handlerInstance = new handlerClass({
+            dataFormat,
+            path,
+            type,
+            schemaOrgJson: this.schemaOrgJson
+          });
+          return handlerInstance.validate(data2);
+        });
+        const handlerResults = (await Promise.all(handlerPromises)).flat();
+        for (const issue of handlerResults) {
+          this.debug && console.debug(`${spacing}  ISSUE:`, issue);
+        }
+        return handlerResults;
+      }));
+      const properties = Object.keys(data2).filter((key) => !key.startsWith("@") && data2[key] !== null && data2[key] !== undefined && (Array.isArray(data2[key]) && data2[key].length > 0 && typeof data2[key][0] === "object" || !Array.isArray(data2[key]) && typeof data2[key] === "object"));
+      if (this.debug && properties.length > 0) {
+        console.debug(`${spacing}PROPERTIES:`, properties);
+      }
+      const propertyIssues = await Promise.all(properties.map((property) => {
+        const newPathElem = { property };
+        if (data2[property]?.["@type"]) {
+          newPathElem.type = data2[property]["@type"];
+        }
+        return this.#validateSubtree(data2[property], rootData, dataFormat, [
+          ...path,
+          newPathElem
+        ]);
+      }));
+      return [...typeIssues.flat(), ...propertyIssues.flat()];
+    }
+    return [];
+  }
+  async validate(waeData) {
+    const dataFormats = ["jsonld", "microdata", "rdfa"];
+    const results = [];
+    for (const dataFormat of dataFormats) {
+      if (!waeData[dataFormat] || Object.keys(waeData[dataFormat]).length === 0) {
+        continue;
+      }
+      this.debug && console.debug("DATA FORMAT:", dataFormat);
+      const rootTypes = Object.keys(waeData[dataFormat]);
+      for (const rootType of rootTypes) {
+        this.debug && console.debug("  ROOT TYPE:", rootType);
+        const rootTypeItems = waeData[dataFormat][rootType];
+        for (const [index2, item] of rootTypeItems.entries()) {
+          const location = item["@location"];
+          delete item["@location"];
+          const issues = await this.#validateSubtree(item, item, dataFormat, [
+            { type: rootType, index: index2 }
+          ]);
+          issues.forEach((issue) => {
+            let source = item["@source"];
+            if (!source && dataFormat === "jsonld") {
+              source = JSON.stringify(item);
+            }
+            results.push({
+              rootType,
+              dataFormat,
+              location,
+              source,
+              ...issue
+            });
+          });
+        }
+      }
+    }
+    const errors = waeData.errors?.filter((e) => dataFormats.includes(e.format));
+    for (const error of errors || []) {
+      const result = {
+        dataFormat: error.format,
+        issueMessage: error.message,
+        rootType: error.format,
+        severity: "ERROR"
+      };
+      if (error.sourceCodeLocation) {
+        result.location = `${error.sourceCodeLocation.startOffset},${error.sourceCodeLocation.endOffset}`;
+      }
+      if (error.source) {
+        result.source = error.source;
+      }
+      results.push(result);
+    }
+    return results;
+  }
+}
+
+// node_modules/@adobe/structured-data-validator/src/index.js
+var src_default = Validator;
+
+// node_modules/@marbec/web-auto-extractor/dist/index.js
+class $5ebcfe677f0c94e7$export$ba54da76d8425a81 {
+  constructor() {
+    this._events = {};
+    this._buffer = "";
+    this._currentTagStartPos = 0;
+    this._currentTagEndPos = 0;
+    this._lastTextEndPos = 0;
+    this._voidElements = new Set([
+      "area",
+      "base",
+      "br",
+      "col",
+      "embed",
+      "hr",
+      "img",
+      "input",
+      "link",
+      "meta",
+      "param",
+      "source",
+      "track",
+      "wbr",
+      "command",
+      "keygen",
+      "menuitem",
+      "frame"
+    ]);
+  }
+  #emit(event, ...args) {
+    if (!this._events[event])
+      return false;
+    this._events[event].forEach((handler) => handler(...args));
+    return true;
+  }
+  #emitStartTag(tagName, attrs, selfClosing, start, end2) {
+    this._currentTagStartPos = start;
+    this._currentTagEndPos = end2;
+    this._lastTextEndPos = end2;
+    this.#emit("startTag", {
+      tagName,
+      attrs,
+      selfClosing,
+      sourceCodeLocation: {
+        startOffset: start,
+        endOffset: end2
+      }
+    });
+  }
+  #emitEndTag(tagName, start, end2) {
+    this._currentTagStartPos = start;
+    this._currentTagEndPos = end2;
+    this._lastTextEndPos = end2;
+    this.#emit("endTag", {
+      tagName,
+      sourceCodeLocation: {
+        startOffset: start,
+        endOffset: end2
+      }
+    });
+  }
+  #parse(html3) {
+    this._buffer = html3;
+    let pos = 0;
+    let textStart = 0;
+    let inTag = false;
+    let inScript = false;
+    let scriptStart = 0;
+    let inComment = false;
+    while (pos < html3.length) {
+      if (inScript) {
+        if (html3[pos] === "<" && html3.slice(pos, pos + 9).toLowerCase() === "</script>") {
+          const scriptEnd = pos;
+          const content = html3.slice(scriptStart, scriptEnd).trim();
+          if (content)
+            this.#emit("text", {
+              text: content,
+              sourceCodeLocation: {
+                startOffset: scriptStart,
+                endOffset: scriptEnd
+              }
+            });
+          pos += 9;
+          textStart = pos;
+          inScript = false;
+          this.#emitEndTag("script", scriptEnd, pos);
+          continue;
+        }
+        pos++;
+        continue;
+      }
+      if (inComment) {
+        if (html3[pos] === "-" && pos + 2 < html3.length && html3.slice(pos, pos + 3) === "-->") {
+          inComment = false;
+          pos += 3;
+          textStart = pos;
+          continue;
+        }
+        pos++;
+        continue;
+      }
+      if (html3[pos] === "<") {
+        if (pos + 3 < html3.length && html3.slice(pos, pos + 4) === "<!--") {
+          inComment = true;
+          pos += 4;
+          continue;
+        }
+        if (pos + 8 < html3.length && html3.slice(pos, pos + 9).toUpperCase() === "<!DOCTYPE") {
+          while (pos < html3.length && html3[pos] !== ">")
+            pos++;
+          if (pos < html3.length)
+            pos++;
+          continue;
+        }
+        if (!inTag && pos > textStart) {
+          const text3 = html3.slice(textStart, pos);
+          if (text3.trim())
+            this.#handleText(text3, textStart, pos);
+        }
+        inTag = true;
+        const tagStart = pos;
+        pos++;
+        const isEndTag = html3[pos] === "/";
+        if (isEndTag)
+          pos++;
+        let tagName = "";
+        while (pos < html3.length && /[a-zA-Z0-9]/.test(html3[pos])) {
+          tagName += html3[pos];
+          pos++;
+        }
+        const attrs = [];
+        let attrName = "";
+        let attrValue = "";
+        let inAttr = false;
+        let inValue = false;
+        let quote = "";
+        while (pos < html3.length && html3[pos] !== ">") {
+          const char = html3[pos];
+          if (!inAttr && /[a-zA-Z]/.test(char)) {
+            inAttr = true;
+            attrName = char;
+          } else if (inAttr && !inValue && char === "=") {
+            inValue = true;
+            pos++;
+            while (pos < html3.length && /\s/.test(html3[pos]))
+              pos++;
+            continue;
+          } else if (inAttr && !inValue && /\s/.test(char)) {
+            attrs.push({
+              name: attrName,
+              value: ""
+            });
+            inAttr = false;
+            attrName = "";
+          } else if (inValue && (char === '"' || char === "'" || char === "`")) {
+            if (!quote)
+              quote = char;
+            else if (char === quote && html3[pos - 1] !== "\\") {
+              attrs.push({
+                name: attrName,
+                value: attrValue
+              });
+              inAttr = false;
+              inValue = false;
+              attrName = "";
+              attrValue = "";
+              quote = "";
+            } else
+              attrValue += char;
+          } else if (inAttr && !inValue)
+            attrName += char;
+          else if (inValue && quote) {
+            if (char === "\\" && pos + 1 < html3.length && html3[pos + 1] === quote) {
+              attrValue += quote;
+              pos++;
+            } else
+              attrValue += char;
+          } else if (inValue && !quote) {
+            if (/[\s>]/.test(char)) {
+              attrs.push({
+                name: attrName,
+                value: attrValue
+              });
+              inAttr = false;
+              inValue = false;
+              attrName = "";
+              attrValue = "";
+              if (char === ">") {
+                pos--;
+                break;
+              }
+            } else
+              attrValue += char;
+          }
+          pos++;
+        }
+        if (inAttr) {
+          if (inValue)
+            attrs.push({
+              name: attrName,
+              value: attrValue
+            });
+          else
+            attrs.push({
+              name: attrName,
+              value: ""
+            });
+        }
+        pos++;
+        inTag = false;
+        textStart = pos;
+        if (isEndTag)
+          this.#emitEndTag(tagName, tagStart, pos);
+        else {
+          const hasExplicitSelfClosing = html3[pos - 2] === "/";
+          const isVoidElement2 = this._voidElements.has(tagName.toLowerCase());
+          const selfClosing = hasExplicitSelfClosing || isVoidElement2;
+          if (tagName.toLowerCase() === "script" && attrs.find((attr2) => attr2.name === "type" && attr2.value === "application/ld+json")) {
+            inScript = true;
+            scriptStart = pos;
+          }
+          const endPos = pos;
+          this.#emitStartTag(tagName, attrs, selfClosing, tagStart, endPos);
+          textStart = pos;
+        }
+      } else
+        pos++;
+    }
+    if (pos > textStart) {
+      const text3 = html3.slice(textStart, pos);
+      if (text3.trim())
+        this.#handleText(text3, textStart, pos);
+    }
+  }
+  #handleText(text3, start, end2) {
+    if (text3.trim() === "")
+      return;
+    this.#emit("text", {
+      text: text3,
+      sourceCodeLocation: {
+        startOffset: start,
+        endOffset: end2
+      }
+    });
+  }
+  on(event, handler) {
+    if (!this._events[event])
+      this._events[event] = [];
+    this._events[event].push(handler);
+    return this;
+  }
+  end(html3) {
+    this.#parse(html3);
+  }
+}
+var $00627442ec250f08$export$2e2bcd8739ae039 = (html3) => {
+  const metatags = {};
+  const errors = [];
+  let currentTitle = null;
+  let inHead = false;
+  const parser = new (0, $5ebcfe677f0c94e7$export$ba54da76d8425a81);
+  parser.on("startTag", ({ tagName, attrs, sourceCodeLocation }) => {
+    if (tagName === "head")
+      inHead = true;
+    else if (tagName === "meta" && inHead) {
+      const attribs = attrs.reduce((acc, current) => {
+        acc[current.name] = current.value;
+        return acc;
+      }, {});
+      const nameKey = Object.keys(attribs).find((attr2) => [
+        "name",
+        "property",
+        "itemprop",
+        "http-equiv"
+      ].indexOf(attr2) !== -1);
+      if (!nameKey)
+        return;
+      const name = attribs[nameKey];
+      const value = attribs["content"];
+      if (value !== undefined) {
+        if (!metatags[name])
+          metatags[name] = [];
+        metatags[name].push(value);
+      } else
+        errors.push({
+          message: `Meta tag "${name}" has no content`,
+          format: "metatags",
+          sourceCodeLocation
+        });
+    } else if (tagName === "title" && inHead)
+      currentTitle = "";
+  });
+  parser.on("text", ({ text: text3 }) => {
+    if (currentTitle !== null)
+      currentTitle += text3;
+  });
+  parser.on("endTag", ({ tagName }) => {
+    if (tagName === "head")
+      inHead = false;
+    else if (tagName === "title" && inHead) {
+      if (!metatags.title)
+        metatags.title = [];
+      metatags.title.push(currentTitle.trim());
+      currentTitle = null;
+    }
+  });
+  parser.end(html3);
+  return {
+    metatags,
+    errors
+  };
+};
+var $fcd225f798e28078$var$typesWithId = [
+  "Thing",
+  "WebPage",
+  "Place",
+  "Organization",
+  "Person",
+  "Event",
+  "Product"
+];
+
+class $fcd225f798e28078$export$2e2bcd8739ae039 {
+  constructor(html3, specName, options = {}) {
+    this.html = html3;
+    this.specName = specName.toLowerCase();
+    this.options = options;
+    this.errors = [];
+    this.scopes = [];
+    this.tags = [];
+    this.topLevelScope = {};
+    this.textForProp = null;
+    this.currentVocab = null;
+    this.parser = new (0, $5ebcfe677f0c94e7$export$ba54da76d8425a81);
+    const { TYPE, PROP, ID_PROPS } = this.#getAttrNames(specName);
+    this.TYPE = TYPE;
+    this.PROP = PROP;
+    this.ID_PROPS = ID_PROPS;
+    this.parser.on("startTag", this.#onOpenTag.bind(this));
+    this.parser.on("endTag", this.#onCloseTag.bind(this));
+    this.parser.on("text", this.#onText.bind(this));
+  }
+  #getAttrNames(specName) {
+    let TYPE, PROP, ID_PROPS;
+    if (specName === "microdata") {
+      TYPE = "itemtype";
+      PROP = "itemprop";
+      ID_PROPS = [
+        "href",
+        "itemid"
+      ];
+    } else if (specName === "rdfa") {
+      TYPE = "typeof";
+      PROP = "property";
+      ID_PROPS = [
+        "about",
+        "href",
+        "resource"
+      ];
+    } else
+      throw new Error("Unsupported spec: use either microdata or rdfa");
+    return {
+      TYPE,
+      PROP,
+      ID_PROPS
+    };
+  }
+  #getType(typeString) {
+    const match2 = /(.*\/)(\w+)/g.exec(typeString);
+    return {
+      context: match2 && match2[1] ? match2[1] : undefined,
+      type: match2 && match2[2] ? match2[2] : typeString
+    };
+  }
+  #getPropValue(tagName, selfClosing, attribs) {
+    if (attribs[this.TYPE])
+      return null;
+    else if (tagName === "a" && attribs.href)
+      return attribs.href.trim();
+    else if (selfClosing) {
+      const properties = [
+        "src",
+        "content",
+        "href",
+        "resource"
+      ];
+      const key = properties.find((property) => attribs[property]);
+      if (key && attribs[key])
+        return attribs[key].trim();
+      else
+        throw new Error(`No value found for ${tagName} tag`);
+    } else if (attribs.content)
+      return attribs.content.trim();
+    else
+      return null;
+  }
+  #onOpenTag({ tagName, attrs, selfClosing, sourceCodeLocation }) {
+    const attribs = attrs.reduce((acc, current) => {
+      acc[current.name] = current.value;
+      return acc;
+    }, {});
+    let currentScope = this.scopes[this.scopes.length - 1];
+    let tag = false;
+    if (attribs[this.TYPE]) {
+      if (attribs[this.PROP] && currentScope) {
+        let newScope = {};
+        currentScope[attribs[this.PROP]] = currentScope[attribs[this.PROP]] || [];
+        currentScope[attribs[this.PROP]].push(newScope);
+        currentScope = newScope;
+      } else {
+        currentScope = {};
+        const { type } = this.#getType(attribs[this.TYPE]);
+        this.topLevelScope[type] = this.topLevelScope[type] || [];
+        this.topLevelScope[type].push(currentScope);
+        currentScope["@location"] = sourceCodeLocation.startOffset;
+      }
+    }
+    if (currentScope) {
+      if (attribs[this.TYPE]) {
+        const { context, type } = this.#getType(attribs[this.TYPE]);
+        let finalContext;
+        if (this.specName === "rdfa") {
+          const vocab = attribs.vocab;
+          if (vocab)
+            this.currentVocab = vocab;
+          finalContext = context || vocab || this.currentVocab;
+        } else
+          finalContext = context;
+        if (!finalContext)
+          this.errors.push({
+            message: `${this.specName} itemtype missing valid context`,
+            format: this.specName,
+            sourceCodeLocation,
+            source: this.html.slice(sourceCodeLocation.startOffset, sourceCodeLocation.endOffset)
+          });
+        if (this.specName === "rdfa") {
+          if (context || attribs.vocab)
+            currentScope["@context"] = finalContext;
+        } else if (finalContext)
+          currentScope["@context"] = finalContext;
+        currentScope["@type"] = type;
+        if ($fcd225f798e28078$var$typesWithId.includes(type)) {
+          const id = this.ID_PROPS.find((prop2) => attribs[prop2]);
+          if (id)
+            currentScope["@id"] = attribs[id];
+        }
+        tag = this.TYPE;
+        this.scopes.push(currentScope);
+      } else if (attribs[this.PROP]) {
+        if (currentScope[attribs[this.PROP]] && !Array.isArray(currentScope[attribs[this.PROP]]))
+          currentScope[attribs[this.PROP]] = [
+            currentScope[attribs[this.PROP]]
+          ];
+        let value = null;
+        try {
+          value = this.#getPropValue(tagName, selfClosing, attribs);
+        } catch (error) {
+          this.errors.push({
+            message: error.message,
+            format: this.specName,
+            sourceCodeLocation,
+            source: this.html.slice(sourceCodeLocation.startOffset, sourceCodeLocation.endOffset)
+          });
+        }
+        if (!value) {
+          tag = this.PROP;
+          if (Array.isArray(currentScope[attribs[this.PROP]]))
+            currentScope[attribs[this.PROP]].push("");
+          else
+            currentScope[attribs[this.PROP]] = "";
+          this.textForProp = attribs[this.PROP];
+        } else if (Array.isArray(currentScope[attribs[this.PROP]]))
+          currentScope[attribs[this.PROP]].push(value);
+        else
+          currentScope[attribs[this.PROP]] = value;
+      }
+    }
+    if (!selfClosing)
+      this.tags.push(tag);
+  }
+  #onText({ text: text3 }) {
+    if (this.textForProp) {
+      if (Array.isArray(this.scopes[this.scopes.length - 1][this.textForProp]))
+        this.scopes[this.scopes.length - 1][this.textForProp][this.scopes[this.scopes.length - 1][this.textForProp].length - 1] += text3.trim();
+      else
+        this.scopes[this.scopes.length - 1][this.textForProp] += text3.trim();
+    }
+  }
+  #onCloseTag({ sourceCodeLocation }) {
+    const tag = this.tags.pop();
+    if (tag === this.TYPE) {
+      let scope = this.scopes.pop();
+      if ((this.options.embedSource === true || Array.isArray(this.options.embedSource) && this.options.embedSource.includes(this.specName)) && "@location" in scope)
+        scope["@source"] = this.html.slice(scope["@location"], sourceCodeLocation.endOffset);
+      if (this.options.addLocation && "@location" in scope)
+        scope["@location"] = `${scope["@location"]},${sourceCodeLocation.endOffset}`;
+      else if (!this.options.addLocation && "@location" in scope)
+        delete scope["@location"];
+      if (!scope["@context"])
+        delete scope["@context"];
+      Object.keys(scope).forEach((key) => {
+        if (Array.isArray(scope[key]) && scope[key].length === 1)
+          scope[key] = scope[key][0];
+      });
+    } else if (tag === this.PROP)
+      this.textForProp = false;
+  }
+  #postProcess() {
+    this.topLevelScope = this.#processMultiValueProps(this.topLevelScope);
+  }
+  #processMultiValueProps(obj) {
+    if (Array.isArray(obj))
+      return obj.map((item) => this.#processMultiValueProps(item));
+    else if (obj && typeof obj === "object") {
+      for (const [key, value] of Object.entries(obj)) {
+        if (key.startsWith("@"))
+          continue;
+        obj[key] = this.#processMultiValueProps(value);
+        const propNames = key.trim().split(/\s+/);
+        if (propNames.length > 1) {
+          for (const propName of propNames)
+            if (propName)
+              obj[propName] = obj[key];
+          delete obj[key];
+        }
+      }
+      return obj;
+    } else
+      return obj;
+  }
+  parse() {
+    this.parser.end(this.html);
+    this.#postProcess();
+    return {
+      data: this.topLevelScope,
+      errors: this.errors
+    };
+  }
+}
+
+class $82f74ffa9d011384$export$2e2bcd8739ae039 {
+  constructor(html3, options = {}) {
+    this.html = html3;
+    this.options = options;
+    this.jsonldData = [];
+    this.scriptScope = false;
+    this.parser = new (0, $5ebcfe677f0c94e7$export$ba54da76d8425a81);
+    this.errors = [];
+    this.specName = "jsonld";
+    this.parser.on("startTag", this.#onOpenTag.bind(this));
+    this.parser.on("text", this.#onText.bind(this));
+    this.parser.on("endTag", this.#onCloseTag.bind(this));
+  }
+  #onOpenTag({ tagName, attrs }) {
+    if (tagName === "script" && attrs.find((attr2) => attr2.name === "type" && attr2.value === "application/ld+json"))
+      this.scriptScope = true;
+  }
+  #onText({ text: text3, sourceCodeLocation }) {
+    if (!this.scriptScope)
+      return;
+    try {
+      const parsed = JSON.parse(text3);
+      if (!parsed)
+        throw new Error("JSON-LD is null");
+      let startOffset = sourceCodeLocation.startOffset;
+      let endOffset = sourceCodeLocation.endOffset;
+      const leadingWhitespace = text3.match(/^\s*/)[0].length;
+      startOffset += leadingWhitespace;
+      const trailingWhitespace = text3.match(/\s*$/)[0].length;
+      endOffset -= trailingWhitespace;
+      if (!Array.isArray(parsed)) {
+        if (this.options.addLocation)
+          parsed["@location"] = `${startOffset},${endOffset}`;
+        if (this.options.embedSource === true || Array.isArray(this.options.embedSource) && this.options.embedSource.includes(this.specName))
+          parsed["@source"] = this.html.slice(startOffset, endOffset);
+      } else
+        parsed.forEach((item) => {
+          if (this.options.addLocation)
+            item["@location"] = `${startOffset},${endOffset}`;
+          if (this.options.embedSource === true || Array.isArray(this.options.embedSource) && this.options.embedSource.includes(this.specName))
+            item["@source"] = this.html.slice(startOffset, endOffset);
+        });
+      this.jsonldData.push(parsed);
+    } catch (e) {
+      this.errors.push({
+        message: "Could not parse JSON-LD",
+        format: "jsonld",
+        source: text3,
+        sourceCodeLocation
+      });
+    }
+  }
+  #onCloseTag({ tagName }) {
+    if (tagName === "script" && this.scriptScope)
+      this.scriptScope = false;
+  }
+  #errorMissingType(item) {
+    const sourceCodeLocation = {};
+    const source = {
+      ...item
+    };
+    if (item["@location"]) {
+      sourceCodeLocation.startOffset = parseInt(item["@location"].split(",")[0]);
+      sourceCodeLocation.endOffset = parseInt(item["@location"].split(",")[1]);
+      delete source["@location"];
+    }
+    const isEmptyJson = Object.keys(source).length === 0;
+    if (isEmptyJson)
+      this.errors.push({
+        message: "JSON-LD object is empty",
+        format: "jsonld",
+        sourceCodeLocation,
+        source: JSON.stringify(source)
+      });
+    else
+      this.errors.push({
+        message: "JSON-LD object missing @type attribute",
+        format: "jsonld",
+        sourceCodeLocation,
+        source: JSON.stringify(source)
+      });
+  }
+  #errorMissingContext(item) {
+    const sourceCodeLocation = {};
+    const source = {
+      ...item
+    };
+    if (item["@location"]) {
+      sourceCodeLocation.startOffset = parseInt(item["@location"].split(",")[0]);
+      sourceCodeLocation.endOffset = parseInt(item["@location"].split(",")[1]);
+      delete source["@location"];
+    }
+    this.errors.push({
+      message: "JSON-LD object missing @context attribute",
+      format: "jsonld",
+      sourceCodeLocation,
+      source: JSON.stringify(source)
+    });
+  }
+  #normalizeJsonldData() {
+    const normalizedData = {};
+    this.jsonldData.forEach((item) => {
+      if (!Array.isArray(item))
+        item = [
+          item
+        ];
+      item.forEach((item2) => {
+        if (item2["@graph"]) {
+          let context = item2["@context"];
+          let checkContext = true;
+          if (!context)
+            this.#errorMissingContext(item2);
+          else
+            checkContext = false;
+          item2["@graph"].forEach((graphItem) => {
+            if (item2["@location"])
+              graphItem["@location"] = item2["@location"];
+            if (item2["@source"])
+              graphItem["@source"] = item2["@source"];
+            if (checkContext) {
+              if (context && !graphItem["@context"])
+                graphItem["@context"] = context;
+              else if (!context) {
+                if (graphItem["@context"])
+                  context = graphItem["@context"];
+                else
+                  this.#errorMissingContext(graphItem);
+              }
+            }
+            if (!graphItem["@type"]) {
+              this.#errorMissingType(graphItem);
+              return;
+            }
+            if (Array.isArray(graphItem["@type"]))
+              graphItem["@type"].forEach((type) => {
+                normalizedData[type] = normalizedData[type] || [];
+                normalizedData[type].push(graphItem);
+              });
+            else {
+              normalizedData[graphItem["@type"]] = normalizedData[graphItem["@type"]] || [];
+              normalizedData[graphItem["@type"]].push(graphItem);
+            }
+          });
+        } else {
+          if (!item2["@type"]) {
+            this.#errorMissingType(item2);
+            return;
+          }
+          if (Array.isArray(item2["@type"]))
+            item2["@type"].forEach((type) => {
+              normalizedData[type] = normalizedData[type] || [];
+              normalizedData[type].push(item2);
+            });
+          else {
+            normalizedData[item2["@type"]] = normalizedData[item2["@type"]] || [];
+            normalizedData[item2["@type"]].push(item2);
+          }
+        }
+      });
+    });
+    return normalizedData;
+  }
+  parse() {
+    this.parser.end(this.html);
+    return {
+      jsonld: this.#normalizeJsonldData(),
+      errors: this.errors
+    };
+  }
+}
+
+class $bc4dc2082ab41307$export$2e2bcd8739ae039 {
+  constructor(html3, options = {}) {
+    this.html = html3;
+    this.options = {
+      skipEmptyHeadings: false,
+      skipLayoutElements: false,
+      ...options
+    };
+    this.errors = [];
+    this.headings = [];
+    this.currentHeading = null;
+    this.headingText = "";
+    this.headingStart = 0;
+    this.headingEnd = 0;
+    this.layoutStack = [];
+    this.isInLayoutElement = false;
+    this.parser = new (0, $5ebcfe677f0c94e7$export$ba54da76d8425a81);
+    this.parser.on("startTag", this.#onOpenTag.bind(this));
+    this.parser.on("endTag", this.#onCloseTag.bind(this));
+    this.parser.on("text", this.#onText.bind(this));
+  }
+  #onOpenTag({ tagName, attrs, sourceCodeLocation }) {
+    const tag = tagName.toLowerCase();
+    if ([
+      "header",
+      "footer",
+      "nav",
+      "aside"
+    ].includes(tag)) {
+      this.layoutStack.push(tag);
+      this.isInLayoutElement = true;
+    }
+    if (/^h[1-6]$/i.test(tag))
+      this.#startHeading(tag, attrs, sourceCodeLocation);
+  }
+  #onCloseTag({ tagName, sourceCodeLocation }) {
+    const tag = tagName.toLowerCase();
+    if ([
+      "header",
+      "footer",
+      "nav",
+      "aside"
+    ].includes(tag)) {
+      const index2 = this.layoutStack.lastIndexOf(tag);
+      if (index2 !== -1) {
+        this.layoutStack.splice(index2, 1);
+        this.isInLayoutElement = this.layoutStack.length > 0;
+      }
+    }
+    if (/^h[1-6]$/i.test(tag))
+      this.#endHeading(tag, sourceCodeLocation);
+  }
+  #onText({ text: text3 }) {
+    if (this.currentHeading)
+      this.headingText += text3;
+  }
+  #startHeading(tagName, attrs, sourceCodeLocation) {
+    const level = parseInt(tagName.charAt(1));
+    this.currentHeading = {
+      tag: tagName.toLowerCase(),
+      level,
+      text: "",
+      order: this.headings.length,
+      attributes: attrs
+    };
+    if (!this.options.skipLayoutElements)
+      this.currentHeading.isLayoutElement = this.isInLayoutElement;
+    this.headingText = "";
+    this.headingStart = sourceCodeLocation.startOffset;
+  }
+  #endHeading(tagName, sourceCodeLocation) {
+    if (!this.currentHeading)
+      return;
+    if (tagName === this.currentHeading.tag) {
+      this.currentHeading.text = this.headingText.trim();
+      this.headingEnd = sourceCodeLocation.endOffset;
+      if (this.options.embedSource)
+        this.currentHeading["@source"] = this.html.slice(this.headingStart, this.headingEnd);
+      if (this.options.addLocation)
+        this.currentHeading["@location"] = `${this.headingStart},${this.headingEnd}`;
+      if (this.options.skipLayoutElements && this.isInLayoutElement)
+        ;
+      else if (!this.options.skipEmptyHeadings || this.currentHeading.text.trim() !== "")
+        this.headings.push(this.currentHeading);
+    } else
+      this.errors.push({
+        message: "Heading tags are malformed",
+        format: "headings",
+        sourceCodeLocation
+      });
+    this.currentHeading = null;
+    this.headingText = "";
+    this.headingStart = 0;
+    this.headingEnd = 0;
+  }
+  parse() {
+    this.parser.end(this.html);
+    return {
+      headings: this.headings,
+      errors: this.errors
+    };
+  }
+}
+
+class $da8260eeca42c0ea$var$WebAutoExtractor {
+  constructor(options = {}) {
+    this.options = {
+      addLocation: false,
+      embedSource: false,
+      ...options
+    };
+  }
+  parse(html3) {
+    const { metatags, errors: metatagErrors } = (0, $00627442ec250f08$export$2e2bcd8739ae039)(html3);
+    const { data: microdata, errors: microdataErrors } = new (0, $fcd225f798e28078$export$2e2bcd8739ae039)(html3, "microdata", this.options).parse();
+    const { data: rdfa, errors: rdfaErrors } = new (0, $fcd225f798e28078$export$2e2bcd8739ae039)(html3, "rdfa", this.options).parse();
+    const { jsonld, errors: jsonldErrors } = new (0, $82f74ffa9d011384$export$2e2bcd8739ae039)(html3, this.options).parse();
+    const { headings, errors: headingErrors } = new (0, $bc4dc2082ab41307$export$2e2bcd8739ae039)(html3, this.options).parse();
+    return {
+      metatags,
+      microdata,
+      rdfa,
+      jsonld,
+      headings,
+      errors: [
+        ...metatagErrors,
+        ...microdataErrors,
+        ...rdfaErrors,
+        ...jsonldErrors,
+        ...headingErrors
+      ]
+    };
+  }
+}
+var $da8260eeca42c0ea$export$2e2bcd8739ae039 = $da8260eeca42c0ea$var$WebAutoExtractor;
+
+// server/schema-viewer.ts
+var SCHEMA_ORG_VOCAB_URL = "https://schema.org/version/latest/schemaorg-all-https.jsonld";
+var MAX_HTML_BYTES2 = 2 * 1024 * 1024;
+var cachedVocabulary = null;
+var vocabularyPromise = null;
+function isValidHttpUrl2(input) {
+  if (!input)
+    return false;
+  try {
+    const u = new URL(input);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+function looksLikeHtml(input) {
+  const trimmed = input.trim();
+  if (!trimmed)
+    return false;
+  return trimmed.startsWith("<!doctype") || trimmed.startsWith("<html") || /<([a-z][a-z0-9-]*)\b[^>]*>/i.test(trimmed);
+}
+function looksLikeJson(input) {
+  const trimmed = input.trim();
+  return trimmed.startsWith("{") || trimmed.startsWith("[");
+}
+function toExtractionHtml(input) {
+  const trimmed = input.trim();
+  if (!trimmed)
+    return "";
+  if (looksLikeHtml(trimmed))
+    return trimmed;
+  if (looksLikeJson(trimmed)) {
+    return `<!doctype html><html><head></head><body><script type="application/ld+json">${trimmed}</script></body></html>`;
+  }
+  return `<!doctype html><html><head></head><body>${trimmed}</body></html>`;
+}
+async function fetchWithTimeout2(url, ms) {
+  const controller = new AbortController;
+  const timeout = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "user-agent": "Mozilla/5.0 (compatible; Orbit-Schema-Viewer/1.0; +https://orbit.local)",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+      },
+      redirect: "follow",
+      cache: "no-store"
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+async function loadSchemaOrgVocabulary() {
+  if (cachedVocabulary)
+    return cachedVocabulary;
+  if (vocabularyPromise)
+    return vocabularyPromise;
+  vocabularyPromise = (async () => {
+    try {
+      const response = await fetch(SCHEMA_ORG_VOCAB_URL, { cache: "force-cache" });
+      if (!response.ok)
+        return null;
+      const payload = await response.json();
+      cachedVocabulary = payload;
+      return cachedVocabulary;
+    } catch {
+      return null;
+    } finally {
+      vocabularyPromise = null;
+    }
+  })();
+  return vocabularyPromise;
+}
+function extractSchemas(data2) {
+  const output = [];
+  const formats = ["jsonld", "microdata", "rdfa"];
+  for (const format of formats) {
+    const bucket = data2[format];
+    if (!bucket || typeof bucket !== "object")
+      continue;
+    for (const [rootType, items] of Object.entries(bucket)) {
+      if (!Array.isArray(items))
+        continue;
+      items.forEach((item, index2) => {
+        if (!item || typeof item !== "object")
+          return;
+        const location = typeof item["@location"] === "string" ? item["@location"] : undefined;
+        const source = typeof item["@source"] === "string" ? item["@source"] : undefined;
+        output.push({
+          id: `${format}:${rootType}:${index2}`,
+          dataFormat: format,
+          rootType,
+          index: index2,
+          location,
+          source,
+          data: item
+        });
+      });
+    }
+  }
+  return output;
+}
+function toExtractionErrorMessages(data2) {
+  const raw2 = Array.isArray(data2.errors) ? data2.errors : [];
+  return raw2.map((error) => {
+    if (!error || typeof error !== "object")
+      return null;
+    if (error.format !== "jsonld" && error.format !== "microdata" && error.format !== "rdfa") {
+      return null;
+    }
+    if (typeof error.message !== "string" || error.message.trim().length === 0) {
+      return null;
+    }
+    return `${error.format.toUpperCase()}: ${error.message}`;
+  }).filter((message) => Boolean(message));
+}
+async function validateExtractedSchemas(data2) {
+  const schemaOrgVocabulary = await loadSchemaOrgVocabulary();
+  const validator = new src_default(schemaOrgVocabulary ?? undefined);
+  const cloned = structuredClone(data2);
+  const rawIssues = await validator.validate(cloned);
+  const issues = rawIssues.map((issue) => {
+    const severity = issue.severity === "WARNING" || issue.severity === "ERROR" ? issue.severity : "ERROR";
+    const issueMessage = typeof issue.issueMessage === "string" && issue.issueMessage.trim().length > 0 ? issue.issueMessage : "Validation issue";
+    return {
+      issueMessage,
+      severity,
+      dataFormat: typeof issue.dataFormat === "string" ? issue.dataFormat : undefined,
+      rootType: typeof issue.rootType === "string" ? issue.rootType : undefined,
+      location: typeof issue.location === "string" ? issue.location : undefined,
+      path: Array.isArray(issue.path) ? issue.path : undefined,
+      fieldNames: Array.isArray(issue.fieldNames) ? issue.fieldNames.filter((fieldName) => typeof fieldName === "string") : undefined
+    };
+  }).sort((left, right) => {
+    if (left.severity === right.severity)
+      return 0;
+    return left.severity === "ERROR" ? -1 : 1;
+  });
+  return {
+    issues,
+    usedSchemaOrgVocabulary: Boolean(schemaOrgVocabulary)
+  };
+}
+function parseFromHtml(html3) {
+  const extractor = new $da8260eeca42c0ea$export$2e2bcd8739ae039({
+    addLocation: true,
+    embedSource: ["jsonld", "microdata", "rdfa"]
+  });
+  return extractor.parse(html3);
+}
+async function runSchemaViewerValidation(input) {
+  const snippet = typeof input.snippet === "string" ? input.snippet.trim() : "";
+  const hasSnippet = snippet.length > 0;
+  const hasUrl = typeof input.url === "string" && input.url.trim().length > 0;
+  if (!hasSnippet && !hasUrl) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Provide either a public URL or markup snippet."
+    };
+  }
+  let extracted;
+  try {
+    if (hasSnippet) {
+      extracted = parseFromHtml(toExtractionHtml(snippet));
+    } else {
+      const targetUrl = (input.url ?? "").trim();
+      if (!isValidHttpUrl2(targetUrl)) {
+        return {
+          ok: false,
+          status: 400,
+          error: "Invalid URL. Use a public http(s) address."
+        };
+      }
+      const response = await fetchWithTimeout2(targetUrl, 12000);
+      if (!response.ok) {
+        return {
+          ok: false,
+          status: 502,
+          error: `Upstream responded with ${response.status}.`
+        };
+      }
+      let html3 = await response.text();
+      if (html3.length > MAX_HTML_BYTES2) {
+        html3 = html3.slice(0, MAX_HTML_BYTES2);
+      }
+      extracted = parseFromHtml(html3);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not extract schema.";
+    const status = message.toLowerCase().includes("abort") ? 504 : 500;
+    return { ok: false, status, error: message };
+  }
+  try {
+    const [{ issues, usedSchemaOrgVocabulary }, extractedSchemas] = await Promise.all([
+      validateExtractedSchemas(extracted),
+      Promise.resolve(extractSchemas(extracted))
+    ]);
+    const extractionErrors = toExtractionErrorMessages(extracted);
+    return {
+      ok: true,
+      data: {
+        extractedSchemas,
+        issues,
+        extractionErrors,
+        usedSchemaOrgVocabulary
+      }
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not validate structured data.";
+    return {
+      ok: false,
+      status: 500,
+      error: message
+    };
+  }
+}
+
 // server/tinify.ts
 import { readFile as readFile3, rename, stat as stat3, writeFile as writeFile2 } from "fs/promises";
 import { dirname as dirname2, extname, join as join4, parse as parse6, resolve as resolve2 } from "path";
@@ -20193,7 +22760,17 @@ app.put("/api/preferences", async (c) => {
       ...current.appSettings.tinify,
       ...body.appSettings.tinify,
       apiKey: typeof body.appSettings.tinify?.apiKey === "string" ? body.appSettings.tinify.apiKey : current.appSettings.tinify?.apiKey
-    } : current.appSettings.tinify
+    } : current.appSettings.tinify,
+    svgo: body.appSettings.svgo && typeof body.appSettings.svgo === "object" ? {
+      ...current.appSettings.svgo,
+      ...body.appSettings.svgo,
+      schemaVersion: typeof body.appSettings.svgo?.schemaVersion === "number" ? Math.round(body.appSettings.svgo.schemaVersion) : current.appSettings.svgo?.schemaVersion,
+      plugins: body.appSettings.svgo?.plugins && typeof body.appSettings.svgo?.plugins === "object" ? Object.fromEntries(Object.entries(body.appSettings.svgo.plugins).filter((entry) => typeof entry[0] === "string" && typeof entry[1] === "boolean")) : current.appSettings.svgo?.plugins,
+      multipass: typeof body.appSettings.svgo?.multipass === "boolean" ? body.appSettings.svgo.multipass : current.appSettings.svgo?.multipass,
+      pretty: typeof body.appSettings.svgo?.pretty === "boolean" ? body.appSettings.svgo.pretty : current.appSettings.svgo?.pretty,
+      floatPrecision: typeof body.appSettings.svgo?.floatPrecision === "number" ? body.appSettings.svgo.floatPrecision : current.appSettings.svgo?.floatPrecision,
+      transformPrecision: typeof body.appSettings.svgo?.transformPrecision === "number" ? body.appSettings.svgo.transformPrecision : current.appSettings.svgo?.transformPrecision
+    } : current.appSettings.svgo
   } : current.appSettings;
   const next2 = {
     ...current,
@@ -20321,6 +22898,19 @@ app.post("/api/open", async (c) => {
 app.get("/api/og", async (c) => {
   const target = c.req.query("url");
   const result = await fetchOgPreview(target);
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status);
+  }
+  return c.json(result.data);
+});
+app.post("/api/schema/validate", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  const url = typeof body.url === "string" ? body.url : null;
+  const snippet = typeof body.snippet === "string" ? body.snippet : null;
+  const result = await runSchemaViewerValidation({ url, snippet });
   if (!result.ok) {
     return c.json({ error: result.error }, result.status);
   }

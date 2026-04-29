@@ -243,6 +243,15 @@ export const SidebarPanel = memo(function SidebarPanel({
                 }
               />
               <SubNavItem
+                label="SVGO"
+                active={pathname === "/tools/svgo"}
+                onClick={() =>
+                  startTransition(() => {
+                    navigate({ to: "/tools/svgo" })
+                  })
+                }
+              />
+              <SubNavItem
                 label="Px ↔ rem"
                 active={pathname === "/tools/px-to-rem"}
                 onClick={() =>
@@ -261,11 +270,11 @@ export const SidebarPanel = memo(function SidebarPanel({
                 }
               />
               <SubNavItem
-                label="SVGO"
-                active={pathname === "/tools/svgo"}
+                label="Schema viewer"
+                active={pathname === "/tools/schema-viewer"}
                 onClick={() =>
                   startTransition(() => {
-                    navigate({ to: "/tools/svgo" })
+                    navigate({ to: "/tools/schema-viewer" })
                   })
                 }
               />

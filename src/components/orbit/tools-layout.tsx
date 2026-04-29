@@ -4,6 +4,8 @@ const TOOL_SUBTITLES = [
   { to: "/tools/tinify", label: "Tinify" },
   { to: "/tools/px-to-rem", label: "Px ↔ rem" },
   { to: "/tools/open-graph", label: "Open graph" },
+  { to: "/tools/svgo", label: "SVGO" },
+  { to: "/tools/schema-viewer", label: "Schema viewer" },
 ] as const
 
 export function ToolsLayout() {

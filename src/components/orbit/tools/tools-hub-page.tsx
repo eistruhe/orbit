@@ -2,6 +2,7 @@ import {
   ArrowLeftRight,
   ChevronRight,
   FileCode2,
+  FileSearch2,
   Image as ImageIcon,
   Link as LinkIcon,
 } from "lucide-react"
@@ -14,6 +15,13 @@ const tools = [
     description: "Compress PNG and JPG images via the TinyPNG API.",
     icon: ImageIcon,
     target: "/tools/tinify" as const,
+  },
+  {
+    id: "svgo",
+    name: "SVGO",
+    description: "Optimize one or many SVG files with SVGO settings.",
+    icon: FileCode2,
+    target: "/tools/svgo" as const,
   },
   {
     id: "px-to-rem",
@@ -32,11 +40,12 @@ const tools = [
     target: "/tools/open-graph" as const,
   },
   {
-    id: "svgo",
-    name: "SVGO",
-    description: "Optimize one or many SVG files with SVGO settings.",
-    icon: FileCode2,
-    target: "/tools/svgo" as const,
+    id: "schema-viewer",
+    name: "Schema viewer",
+    description:
+      "Inspect and validate JSON-LD, Microdata, and RDFa from URLs or snippets.",
+    icon: FileSearch2,
+    target: "/tools/schema-viewer" as const,
   },
 ]
 

@@ -18,8 +18,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@adobe/structured-data-validator": "^1.7.0",
     "@base-ui/react": "^1.4.1",
     "@fontsource-variable/geist": "^5.2.8",
+    "@marbec/web-auto-extractor": "^2.2.1",
     "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-slot": "^1.2.4",
     "@tanstack/react-router": "^1.168.25",
