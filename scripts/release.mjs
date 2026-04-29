@@ -4,7 +4,7 @@
  * Requires GH_TOKEN (or GITHUB_TOKEN) with repo scope for uploads.
  */
 
-import { readFileSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import readline from "node:readline/promises"
 import process from "node:process"
@@ -16,6 +16,39 @@ import semver from "semver"
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(__dirname, "..")
 const packageJsonPath = join(projectRoot, "package.json")
+
+/**
+ * Load `.env` from the repo root so `bun run release` sees `GITHUB_TOKEN` / `GH_TOKEN`
+ * without exporting them in the shell. Does not override vars already set.
+ */
+function loadDotenvFromProjectRoot() {
+  const path = join(projectRoot, ".env")
+  if (!existsSync(path)) return
+  let raw
+  try {
+    raw = readFileSync(path, "utf8")
+  } catch {
+    return
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith("#")) continue
+    const eq = trimmed.indexOf("=")
+    if (eq <= 0) continue
+    const key = trimmed.slice(0, eq).trim()
+    if (!key || process.env[key] !== undefined) continue
+    let value = trimmed.slice(eq + 1).trim()
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1)
+    }
+    process.env[key] = value
+  }
+}
+
+loadDotenvFromProjectRoot()
 
 function run(cmd, args, options = {}) {
   const result = spawnSync(cmd, args, {
@@ -57,6 +90,7 @@ Options:
 
 Env:
   GH_TOKEN or GITHUB_TOKEN   Required for uploading release assets unless --dry-run
+  (Loads project .env automatically; exports still win.)
 `)
 }
 
