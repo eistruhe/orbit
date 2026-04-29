@@ -34,7 +34,7 @@ const PACKAGE_VERSION = (() => {
   }
 })()
 
-const PACKAGE_COPYRIGHT = "Copyright © 2026 Orbit"
+const PACKAGE_COPYRIGHT = `Copyright © ${new Date().getFullYear()} eistruhe`
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
