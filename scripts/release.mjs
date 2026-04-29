@@ -299,6 +299,9 @@ async function main() {
     process.exit(1)
   }
 
+  const tagName = `v${next}`
+
+  const steps = [
     `Set package.json version → ${next}`,
     "bun run build:desktop",
     "electron-builder --publish always --mac",
