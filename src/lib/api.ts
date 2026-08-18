@@ -204,6 +204,211 @@ export async function tinifyPaths(
   return data
 }
 
+export type DevServerPackageManager = "bun" | "pnpm" | "yarn" | "npm"
+
+export type DevServerStatus = "starting" | "running" | "exited" | "error"
+
+export type DevServerInfo = {
+  id: string
+  repoPath: string
+  script: string
+  packageManager: DevServerPackageManager
+  pid: number
+  status: DevServerStatus
+  startedAt: string
+  exitCode: number | null
+  detectedUrl: string | null
+}
+
+export type DevServerLogLine = {
+  seq: number
+  ts: string
+  stream: "stdout" | "stderr"
+  text: string
+}
+
+export type DevServerLogsResponse = {
+  lines: DevServerLogLine[]
+  nextSince: number
+  status: DevServerStatus
+  detectedUrl: string | null
+  exitCode: number | null
+}
+
+export type RepoScriptsResponse = {
+  scripts: Record<string, string>
+  packageManager: DevServerPackageManager
+}
+
+/**
+ * Lists package.json scripts and the detected package manager for a repo.
+ * Returns null when the project has no package.json.
+ */
+export async function fetchRepoScripts(
+  path: string,
+): Promise<RepoScriptsResponse | null> {
+  const params = new URLSearchParams({ path })
+  const res = await fetch(`/api/repo/scripts?${params.toString()}`)
+  if (res.status === 404) return null
+  return parseJson<RepoScriptsResponse>(res)
+}
+
+export async function listDevServers(): Promise<DevServerInfo[]> {
+  const res = await fetch("/api/dev-servers")
+  const data = await parseJson<{ servers: DevServerInfo[] }>(res)
+  return data.servers
+}
+
+export async function startDevServer(
+  path: string,
+  script: string,
+): Promise<DevServerInfo> {
+  const res = await fetch("/api/dev-servers/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, script }),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text) as unknown as DevServerInfo & {
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Could not start dev server",
+    )
+  }
+  return data
+}
+
+export async function stopDevServer(id: string): Promise<void> {
+  const res = await fetch("/api/dev-servers/stop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text)
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Could not stop dev server",
+    )
+  }
+}
+
+export async function fetchDevServerLogs(
+  id: string,
+  since: number,
+): Promise<DevServerLogsResponse> {
+  const params = new URLSearchParams({ since: String(since) })
+  const res = await fetch(`/api/dev-servers/${encodeURIComponent(id)}/logs?${params.toString()}`)
+  return parseJson<DevServerLogsResponse>(res)
+}
+
+export type SearchMatch = {
+  line: number
+  column: number
+  preview: string
+}
+
+export type SearchFileResult = {
+  relPath: string
+  matches: SearchMatch[]
+}
+
+export type SearchRepoResult = {
+  repoPath: string
+  repoName: string
+  files: SearchFileResult[]
+}
+
+export type SearchResponse = {
+  results: SearchRepoResult[]
+  truncated: boolean
+  filesScanned: number
+  durationMs: number
+}
+
+export type SearchRequest = {
+  query: string
+  regex?: boolean
+  caseSensitive?: boolean
+  extensions?: string[]
+  libraryId?: string
+}
+
+/**
+ * Runs a content search across all configured scan roots via the local API.
+ */
+export async function runContentSearch(
+  request: SearchRequest,
+): Promise<SearchResponse> {
+  const res = await fetch("/api/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text) as unknown as SearchResponse & {
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ?? "Search failed",
+    )
+  }
+  return data
+}
+
+export type RepoReadmeResponse = {
+  fileName: string
+  content: string
+  truncated: boolean
+}
+
+/**
+ * Loads the repo-root README. Returns null when the project has none.
+ */
+export async function fetchRepoReadme(
+  path: string,
+): Promise<RepoReadmeResponse | null> {
+  const params = new URLSearchParams({ path })
+  const res = await fetch(`/api/repo/readme?${params.toString()}`)
+  if (res.status === 404) return null
+  return parseJson<RepoReadmeResponse>(res)
+}
+
+export type PortEntry = {
+  command: string
+  pid: number
+  user: string
+  address: string
+  port: number
+}
+
+export async function fetchPorts(): Promise<PortEntry[]> {
+  const res = await fetch("/api/ports")
+  const data = await parseJson<{ ports: PortEntry[] }>(res)
+  return data.ports
+}
+
+export async function killPortProcess(pid: number, port: number): Promise<void> {
+  const res = await fetch("/api/ports/kill", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pid, port }),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text)
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Could not kill process",
+    )
+  }
+}
+
 export type OgRawMetaItem = { tag: string; value: string }
 
 export type OgPreviewData = {
@@ -216,20 +421,221 @@ export type OgPreviewData = {
   raw: OgRawMetaItem[]
 }
 
+export type SeoCheckStatus = "pass" | "warn" | "fail"
+
+export type SeoCheck = {
+  id: string
+  label: string
+  status: SeoCheckStatus
+  detail: string
+}
+
+export type SeoHeadingItem = { level: number; text: string }
+
+export type SeoAuditData = {
+  score: number
+  checks: SeoCheck[]
+  title: { text: string | null; length: number }
+  metaDescription: { text: string | null; length: number }
+  headings: {
+    /** Total number of h1…h6 tags, index 0 = h1. */
+    levels: number[]
+    structure: SeoHeadingItem[]
+  }
+  images: { total: number; withAlt: number }
+  links: { internal: number; external: number; nofollow: number; total: number }
+  wordCount: number
+  htmlBytes: number
+  textRatio: number
+  hasJsonLd: boolean
+  lang: string | null
+  canonical: string | null
+  robotsMeta: string | null
+  indexable: boolean
+  https: boolean
+  viewport: boolean
+  ogTags: { title: boolean; description: boolean; image: boolean }
+  twitterCard: boolean
+}
+
+export type SeoAuditResponse = {
+  og: OgPreviewData
+  audit: SeoAuditData
+}
+
 /**
- * Fetches Open Graph metadata for the given URL via the local API.
+ * Fetches the SEO audit (checks, headings, links, page weight) plus Open
+ * Graph metadata for the given URL via the local API.
  */
-export async function fetchOgPreview(url: string): Promise<OgPreviewData> {
+export async function fetchSeoAudit(url: string): Promise<SeoAuditResponse> {
   const params = new URLSearchParams({ url })
-  const res = await fetch(`/api/og?${params.toString()}`)
+  const res = await fetch(`/api/seo-audit?${params.toString()}`)
   const text = await res.text()
-  const data = parseResponseBody(text) as unknown as OgPreviewData & {
+  const data = parseResponseBody(text) as unknown as SeoAuditResponse & {
     error?: string
   }
   if (!res.ok) {
     throw new Error(
       (typeof data.error === "string" ? data.error : null) ??
-        "Could not load preview",
+        "Could not load audit",
+    )
+  }
+  return data
+}
+
+/**
+ * Writes derived bytes (converted image, etc.) as a non-clobbering sibling of
+ * a user-picked original file. Returns the written path.
+ */
+export async function writeDerivedFile(input: {
+  originalPath: string
+  suffix: string
+  extension: string
+  dataBase64: string
+}): Promise<string> {
+  const res = await fetch("/api/files/write-derived", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text) as { outputPath?: string; error?: string }
+  if (!res.ok || typeof data.outputPath !== "string") {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Could not write file",
+    )
+  }
+  return data.outputPath
+}
+
+/**
+ * Writes a set of named files into a user-picked directory.
+ */
+export async function writeBatchFiles(
+  dirPath: string,
+  files: { name: string; dataBase64: string }[],
+): Promise<{ name: string; outputPath: string }[]> {
+  const res = await fetch("/api/files/write-batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dirPath, files }),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text) as {
+    written?: { name: string; outputPath: string }[]
+    error?: string
+  }
+  if (!res.ok || !Array.isArray(data.written)) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Could not write files",
+    )
+  }
+  return data.written
+}
+
+export type RedirectHop = {
+  url: string
+  status: number
+  statusText: string
+  location: string | null
+  durationMs: number
+}
+
+export type SecurityHeaderCheck = {
+  name: string
+  present: boolean
+  value: string | null
+  level: "pass" | "warn"
+}
+
+export type RedirectInspection = {
+  chain: RedirectHop[]
+  finalUrl: string
+  finalStatus: number
+  tooManyRedirects: boolean
+  redirectLoop: boolean
+  headers: { name: string; value: string }[]
+  security: SecurityHeaderCheck[]
+  caching: { name: string; value: string | null }[]
+}
+
+/**
+ * Traces the redirect chain and grades response headers via the local API.
+ */
+export async function inspectRedirects(url: string): Promise<RedirectInspection> {
+  const params = new URLSearchParams({ url })
+  const res = await fetch(`/api/redirects?${params.toString()}`)
+  const text = await res.text()
+  const data = parseResponseBody(text) as unknown as RedirectInspection & {
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Could not inspect URL",
+    )
+  }
+  return data
+}
+
+export type RobotsRule = {
+  type: "allow" | "disallow" | "crawl-delay"
+  value: string
+}
+
+export type RobotsGroup = {
+  userAgents: string[]
+  rules: RobotsRule[]
+}
+
+export type SitemapReport = {
+  url: string
+  ok: boolean
+  status: number | null
+  isIndex: boolean
+  urlCount: number | null
+  lastmodPct: number | null
+  errors: string[]
+  children: string[]
+}
+
+export type SampleCheck = {
+  url: string
+  status: number | null
+  error: string | null
+}
+
+export type RobotsValidation = {
+  robotsUrl: string
+  robotsStatus: number | null
+  robotsFound: boolean
+  groups: RobotsGroup[]
+  sitemapUrls: string[]
+  sitemapDiscovery: "robots" | "fallback" | "none"
+  sitemaps: SitemapReport[]
+  sampleChecks: SampleCheck[]
+  truncated: boolean
+}
+
+/**
+ * Validates robots.txt and referenced sitemaps for a site via the local API.
+ */
+export async function validateRobots(url: string): Promise<RobotsValidation> {
+  const res = await fetch("/api/robots/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text) as unknown as RobotsValidation & {
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Robots validation failed",
     )
   }
   return data
@@ -303,4 +709,172 @@ export async function validateTinifyKey(
     )
   }
   return data
+}
+
+// --- DNS lookup -------------------------------------------------------------
+
+export type DnsRecord = {
+  name: string
+  type: string
+  ttl: number
+  data: string
+}
+
+export type DnsResolverResult = {
+  resolver: "cloudflare" | "google"
+  records: DnsRecord[]
+  error: string | null
+}
+
+export type DnsLookup = {
+  domain: string
+  type: string
+  results: DnsResolverResult[]
+}
+
+export async function lookupDns(
+  domain: string,
+  type: string,
+): Promise<DnsLookup> {
+  const params = new URLSearchParams({ domain, type })
+  const res = await fetch(`/api/dns?${params.toString()}`)
+  const text = await res.text()
+  const data = parseResponseBody(text) as unknown as DnsLookup & {
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ?? "Lookup failed",
+    )
+  }
+  return data
+}
+
+// --- SSL check --------------------------------------------------------------
+
+export type SslCertificate = {
+  domain: string
+  ok: boolean
+  error: string | null
+  subject: string | null
+  issuer: string | null
+  validFrom: string | null
+  validTo: string | null
+  daysLeft: number | null
+  altNames: string[]
+  chain: string[]
+  protocol: string | null
+  selfSigned: boolean
+}
+
+export async function checkSsl(domains: string[]): Promise<SslCertificate[]> {
+  const res = await fetch("/api/ssl/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ domains }),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text) as unknown as {
+    results?: SslCertificate[]
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ?? "Check failed",
+    )
+  }
+  return data.results ?? []
+}
+
+// --- Env compare ------------------------------------------------------------
+
+export type EnvKeyInfo = {
+  key: string
+  hasValue: boolean
+  line: number
+}
+
+export type EnvFileInfo = {
+  name: string
+  keys: EnvKeyInfo[]
+  parseErrors: number
+}
+
+export async function fetchEnvFiles(path: string): Promise<EnvFileInfo[]> {
+  const params = new URLSearchParams({ path })
+  const res = await fetch(`/api/env/files?${params.toString()}`)
+  const text = await res.text()
+  const data = parseResponseBody(text) as unknown as {
+    files?: EnvFileInfo[]
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Could not list env files",
+    )
+  }
+  return data.files ?? []
+}
+
+export async function fetchEnvValues(
+  path: string,
+  file: string,
+): Promise<Record<string, string>> {
+  const res = await fetch("/api/env/values", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, file }),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text) as unknown as {
+    values?: Record<string, string>
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Could not read env values",
+    )
+  }
+  return data.values ?? {}
+}
+
+// --- Dependency audit -------------------------------------------------------
+
+export type DepDiffLevel = "major" | "minor" | "patch" | "none" | "unknown"
+
+export type DepInfo = {
+  name: string
+  range: string
+  latest: string | null
+  diff: DepDiffLevel
+  dev: boolean
+}
+
+export type ProjectAudit = {
+  path: string
+  name: string
+  error: string | null
+  packages: DepInfo[]
+  counts: { total: number; outdated: number; major: number }
+}
+
+export async function auditDeps(paths: string[]): Promise<ProjectAudit[]> {
+  const res = await fetch("/api/deps/audit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paths }),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text) as unknown as {
+    projects?: ProjectAudit[]
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ?? "Audit failed",
+    )
+  }
+  return data.projects ?? []
 }

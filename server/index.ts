@@ -8,10 +8,30 @@ import { Hono } from "hono"
 
 const execFileAsync = promisify(execFile)
 
-import { fetchOgPreview } from "./og.ts"
+import {
+  detectPackageManager,
+  forceKillRemainingDevServers,
+  getDevServerLogs,
+  listDevServers,
+  readPackageScripts,
+  shutdownAllDevServers,
+  startDevServer,
+  stopDevServer,
+} from "./dev-servers.ts"
+import { auditProjects } from "./deps.ts"
+import { lookupDns } from "./dns.ts"
+import { listEnvFiles, readEnvValues } from "./env-files.ts"
+import { writeBatchFiles, writeDerivedFile } from "./files.ts"
+import { checkSslDomains } from "./ssl.ts"
+import { fetchSeoAudit } from "./seo.ts"
 import { openLocalPath, resolvePathUnderAllowedRoots } from "./open-path.ts"
+import { killPortProcess, listListeningPorts } from "./ports.ts"
 import { readPreferences, writePreferences, type ProjectLibrary } from "./prefs.ts"
+import { readRepoReadme } from "./readme.ts"
+import { inspectRedirects } from "./redirects.ts"
+import { validateRobots } from "./robots.ts"
 import { scanRepos } from "./scan.ts"
+import { runContentSearch } from "./search.ts"
 import { runSchemaViewerValidation } from "./schema-viewer.ts"
 import { tinifyPaths, validateTinifyApiKey } from "./tinify.ts"
 
@@ -69,6 +89,15 @@ function getConfiguredLibraries(
     .filter((root) => root.id !== "primary")
     .map((root) => ({ ...root, path: expandHomePath(root.path) }))
   return [primary, ...extras]
+}
+
+async function getAllowedRoots(): Promise<string[]> {
+  const prefs = await readPreferences()
+  return getConfiguredLibraries(
+    prefs.scanRoot,
+    prefs.primaryScanRootLabel,
+    prefs.additionalScanRoots,
+  ).map((library) => library.path)
 }
 
 type BranchGroups = {
@@ -438,9 +467,9 @@ app.post("/api/open", async (c) => {
   })
 })
 
-app.get("/api/og", async (c) => {
+app.get("/api/seo-audit", async (c) => {
   const target = c.req.query("url")
-  const result = await fetchOgPreview(target)
+  const result = await fetchSeoAudit(target)
   if (!result.ok) {
     return c.json({ error: result.error }, result.status as 400 | 500 | 502 | 504)
   }
@@ -594,6 +623,357 @@ app.post("/api/repo/git-fetch", async (c) => {
 
   return c.json({ ok: true })
 })
+
+app.get("/api/repo/readme", async (c) => {
+  const pathStr = c.req.query("path")
+  if (!pathStr) {
+    return c.json({ error: "Missing path" }, 400)
+  }
+
+  let safePath: string
+  try {
+    safePath = await resolvePathUnderAllowedRoots(pathStr, await getAllowedRoots())
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return c.json({ error: message }, 400)
+  }
+
+  const result = await readRepoReadme(safePath)
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400 | 404 | 500)
+  }
+  return c.json(result.data)
+})
+
+app.get("/api/repo/scripts", async (c) => {
+  const pathStr = c.req.query("path")
+  if (!pathStr) {
+    return c.json({ error: "Missing path" }, 400)
+  }
+
+  let safePath: string
+  try {
+    safePath = await resolvePathUnderAllowedRoots(pathStr, await getAllowedRoots())
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return c.json({ error: message }, 400)
+  }
+
+  const scripts = await readPackageScripts(safePath)
+  if (scripts === null) {
+    return c.json({ error: "No package.json found in this project" }, 404)
+  }
+  const packageManager = await detectPackageManager(safePath)
+  return c.json({ scripts, packageManager })
+})
+
+app.get("/api/dev-servers", (c) => {
+  return c.json({ servers: listDevServers() })
+})
+
+app.post("/api/dev-servers/start", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+  const pathStr = (body as { path?: unknown }).path
+  const script =
+    typeof (body as { script?: unknown }).script === "string" &&
+    (body as { script: string }).script.trim().length > 0
+      ? (body as { script: string }).script.trim()
+      : "dev"
+  if (typeof pathStr !== "string" || pathStr.length === 0) {
+    return c.json({ error: "Missing path" }, 400)
+  }
+
+  let safePath: string
+  try {
+    safePath = await resolvePathUnderAllowedRoots(pathStr, await getAllowedRoots())
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return c.json({ error: message }, 400)
+  }
+
+  const result = await startDevServer(safePath, script)
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400 | 409 | 500)
+  }
+  return c.json(result.server)
+})
+
+app.post("/api/dev-servers/stop", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+  const id = (body as { id?: unknown }).id
+  if (typeof id !== "string" || id.length === 0) {
+    return c.json({ error: "Missing id" }, 400)
+  }
+  const result = stopDevServer(id)
+  if (!result.ok) {
+    return c.json({ error: result.error ?? "Could not stop dev server" }, 400)
+  }
+  return c.json({ ok: true })
+})
+
+app.get("/api/dev-servers/:id/logs", (c) => {
+  const id = c.req.param("id")
+  const sinceRaw = Number(c.req.query("since"))
+  const since = Number.isFinite(sinceRaw) && sinceRaw > 0 ? sinceRaw : 0
+  const logs = getDevServerLogs(id, since)
+  if (!logs) {
+    return c.json({ error: "Unknown dev server id" }, 404)
+  }
+  return c.json(logs)
+})
+
+app.post("/api/files/write-derived", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+  const originalPath = (body as { originalPath?: unknown }).originalPath
+  const suffix = (body as { suffix?: unknown }).suffix
+  const extension = (body as { extension?: unknown }).extension
+  const dataBase64 = (body as { dataBase64?: unknown }).dataBase64
+  if (
+    typeof originalPath !== "string" ||
+    typeof suffix !== "string" ||
+    typeof extension !== "string" ||
+    typeof dataBase64 !== "string"
+  ) {
+    return c.json(
+      { error: "originalPath, suffix, extension, and dataBase64 are required" },
+      400,
+    )
+  }
+
+  const result = await writeDerivedFile({ originalPath, suffix, extension, dataBase64 })
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400 | 413 | 500)
+  }
+  return c.json({ outputPath: result.outputPath })
+})
+
+app.post("/api/files/write-batch", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+  const dirPath = (body as { dirPath?: unknown }).dirPath
+  const filesRaw = (body as { files?: unknown }).files
+  if (typeof dirPath !== "string" || !Array.isArray(filesRaw)) {
+    return c.json({ error: "dirPath and files are required" }, 400)
+  }
+  const files = filesRaw.filter(
+    (entry): entry is { name: string; dataBase64: string } =>
+      Boolean(entry) &&
+      typeof entry === "object" &&
+      typeof (entry as { name?: unknown }).name === "string" &&
+      typeof (entry as { dataBase64?: unknown }).dataBase64 === "string",
+  )
+
+  const result = await writeBatchFiles({ dirPath, files })
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400 | 413 | 500)
+  }
+  return c.json({ written: result.written })
+})
+
+app.get("/api/env/files", async (c) => {
+  const pathStr = c.req.query("path")
+  if (!pathStr) return c.json({ error: "Missing path" }, 400)
+  let safePath: string
+  try {
+    safePath = await resolvePathUnderAllowedRoots(pathStr, await getAllowedRoots())
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400)
+  }
+  const result = await listEnvFiles(safePath)
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400 | 500)
+  }
+  return c.json(result.data)
+})
+
+app.post("/api/env/values", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const pathStr =
+    body && typeof body === "object" &&
+    typeof (body as { path?: unknown }).path === "string"
+      ? (body as { path: string }).path
+      : null
+  if (!pathStr) return c.json({ error: "Missing path" }, 400)
+  let safePath: string
+  try {
+    safePath = await resolvePathUnderAllowedRoots(pathStr, await getAllowedRoots())
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400)
+  }
+  const result = await readEnvValues(
+    safePath,
+    (body as { file?: unknown }).file,
+  )
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400)
+  }
+  return c.json(result.data)
+})
+
+app.post("/api/deps/audit", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const rawPaths =
+    body && typeof body === "object"
+      ? (body as { paths?: unknown }).paths
+      : null
+  if (!Array.isArray(rawPaths)) {
+    return c.json({ error: "Expected a list of project paths" }, 400)
+  }
+  const allowedRoots = await getAllowedRoots()
+  const safePaths: string[] = []
+  for (const entry of rawPaths) {
+    if (typeof entry !== "string") continue
+    try {
+      safePaths.push(await resolvePathUnderAllowedRoots(entry, allowedRoots))
+    } catch {
+      // Paths outside the scan roots are silently skipped.
+    }
+  }
+  const result = await auditProjects(safePaths)
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400)
+  }
+  return c.json(result.data)
+})
+
+app.get("/api/dns", async (c) => {
+  const result = await lookupDns(c.req.query("domain"), c.req.query("type"))
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400)
+  }
+  return c.json(result.data)
+})
+
+app.post("/api/ssl/check", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const domains =
+    body && typeof body === "object"
+      ? (body as { domains?: unknown }).domains
+      : null
+  const result = await checkSslDomains(domains)
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400)
+  }
+  return c.json(result.data)
+})
+
+app.get("/api/redirects", async (c) => {
+  const result = await inspectRedirects(c.req.query("url"))
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400 | 502 | 504)
+  }
+  return c.json(result.data)
+})
+
+app.post("/api/robots/validate", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+  const url =
+    typeof (body as { url?: unknown }).url === "string"
+      ? (body as { url: string }).url
+      : null
+  const result = await validateRobots(url)
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400 | 502 | 504)
+  }
+  return c.json(result.data)
+})
+
+app.post("/api/search", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+  const query =
+    typeof (body as { query?: unknown }).query === "string"
+      ? (body as { query: string }).query
+      : ""
+  const regex = (body as { regex?: unknown }).regex === true
+  const caseSensitive = (body as { caseSensitive?: unknown }).caseSensitive === true
+  const rawExtensions = (body as { extensions?: unknown }).extensions
+  const extensions = Array.isArray(rawExtensions)
+    ? rawExtensions.filter((entry): entry is string => typeof entry === "string")
+    : []
+  const libraryId =
+    typeof (body as { libraryId?: unknown }).libraryId === "string"
+      ? (body as { libraryId: string }).libraryId
+      : null
+
+  const prefs = await readPreferences()
+  const libraries = getConfiguredLibraries(
+    prefs.scanRoot,
+    prefs.primaryScanRootLabel,
+    prefs.additionalScanRoots,
+  )
+  const roots = (
+    libraryId
+      ? libraries.filter((library) => library.id === libraryId)
+      : libraries
+  ).map((library) => library.path)
+
+  const result = await runContentSearch({
+    query,
+    regex,
+    caseSensitive,
+    extensions,
+    roots,
+  })
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400 | 500)
+  }
+  return c.json(result.data)
+})
+
+app.get("/api/ports", async (c) => {
+  const ports = await listListeningPorts()
+  return c.json({ ports })
+})
+
+app.post("/api/ports/kill", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+  const pid = Number((body as { pid?: unknown }).pid)
+  const port = Number((body as { port?: unknown }).port)
+  if (!Number.isInteger(pid) || !Number.isInteger(port)) {
+    return c.json({ error: "pid and port must be integers" }, 400)
+  }
+  const result = await killPortProcess(pid, port)
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400 | 403 | 409 | 500)
+  }
+  return c.json({ ok: true })
+})
+
+// Dev-server children are detached into their own process groups, so the
+// group signal Electron sends to this process does not reach them. Reap them
+// explicitly on shutdown.
+let shuttingDown = false
+function handleShutdownSignal(): void {
+  if (shuttingDown) return
+  shuttingDown = true
+  shutdownAllDevServers()
+  setTimeout(() => {
+    forceKillRemainingDevServers()
+    process.exit(0)
+  }, 300)
+}
+process.on("SIGTERM", handleShutdownSignal)
+process.on("SIGINT", handleShutdownSignal)
 
 console.log(`orbit API listening on http://127.0.0.1:${PORT}`)
 

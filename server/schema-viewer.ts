@@ -1,6 +1,8 @@
 import Validator from "@adobe/structured-data-validator"
 import WebAutoExtractor from "@marbec/web-auto-extractor"
 
+import { fetchWithTimeout, isValidHttpUrl } from "./util.ts"
+
 const SCHEMA_ORG_VOCAB_URL =
   "https://schema.org/version/latest/schemaorg-all-https.jsonld"
 const MAX_HTML_BYTES = 2 * 1024 * 1024
@@ -53,16 +55,6 @@ export type SchemaViewerResult =
 let cachedVocabulary: unknown | null = null
 let vocabularyPromise: Promise<unknown | null> | null = null
 
-function isValidHttpUrl(input: string | null | undefined): input is string {
-  if (!input) return false
-  try {
-    const u = new URL(input)
-    return u.protocol === "http:" || u.protocol === "https:"
-  } catch {
-    return false
-  }
-}
-
 function looksLikeHtml(input: string): boolean {
   const trimmed = input.trim()
   if (!trimmed) return false
@@ -86,25 +78,6 @@ function toExtractionHtml(input: string): string {
     return `<!doctype html><html><head></head><body><script type="application/ld+json">${trimmed}</script></body></html>`
   }
   return `<!doctype html><html><head></head><body>${trimmed}</body></html>`
-}
-
-async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), ms)
-  try {
-    return await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (compatible; Orbit-Schema-Viewer/1.0; +https://orbit.local)",
-        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
-      redirect: "follow",
-      cache: "no-store",
-    })
-  } finally {
-    clearTimeout(timeout)
-  }
 }
 
 async function loadSchemaOrgVocabulary(): Promise<unknown | null> {

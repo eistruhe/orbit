@@ -1,7 +1,8 @@
-import { Loader2, Upload } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { DropZone } from "@/components/orbit/drop-zone"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
 import { formatBytes } from "@/lib/format-size"
@@ -87,7 +88,6 @@ export function TinifyPage() {
   const [rows, setRows] = useState<CompressionRow[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const queueRef = useRef<string[]>([])
   const processingRef = useRef(false)
   const replaceOriginalRef = useRef(replaceOriginal)
@@ -214,59 +214,32 @@ export function TinifyPage() {
         }
       >
         <div className="space-y-3">
-          <label
-            onDragOver={(event) => {
-              event.preventDefault()
-            }}
-            onDrop={(event) => {
-              event.preventDefault()
-              const droppedPaths = collectSupportedPaths(event.dataTransfer.files)
-              if (droppedPaths.length === 0) {
-                setError(
-                  "Could not read local file paths from dropped images. Click the drop area to pick files directly.",
-                )
-                return
-              }
-              appendPaths(droppedPaths)
-            }}
-            onClick={async () => {
-              if (window.orbitFiles?.pickImagePaths) {
-                const selectedPaths = await window.orbitFiles.pickImagePaths()
-                if (selectedPaths.length > 0) {
-                  appendPaths(selectedPaths)
-                  return
-                }
-              }
-              fileInputRef.current?.click()
-            }}
-            className="flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-border-strong bg-surface-2/40 px-4 py-8 text-center transition-colors hover:border-foreground hover:bg-muted/50"
-          >
-            <Upload className="size-5 text-muted-foreground" />
-            <p className="text-[11px] uppercase tracking-[0.08em] text-foreground">
-              Drop images here
-            </p>
-            <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-              .png · .jpg · .jpeg
-            </p>
-          </label>
-          <input
-            ref={fileInputRef}
-            type="file"
+          <DropZone
+            label="Drop images here or click to choose"
+            hint=".png · .jpg · .jpeg"
             accept=".png,.jpg,.jpeg"
             multiple
-            className="hidden"
-            onChange={(event) => {
-              const files = event.target.files
-              if (!files || files.length === 0) return
-              const selected = collectSupportedPaths(files)
-              if (selected.length === 0) {
+            onFiles={(files) => {
+              const paths = collectSupportedPaths(files)
+              if (paths.length === 0) {
                 setError(
-                  "Could not read local file paths from selected images. Try picking files from the app dialog.",
+                  "Could not read local file paths from the images. Try picking files from the app dialog.",
                 )
                 return
               }
-              appendPaths(selected)
-              event.currentTarget.value = ""
+              appendPaths(paths)
+            }}
+            onClick={(openFilePicker) => {
+              void (async () => {
+                if (window.orbitFiles?.pickImagePaths) {
+                  const selectedPaths = await window.orbitFiles.pickImagePaths()
+                  if (selectedPaths.length > 0) {
+                    appendPaths(selectedPaths)
+                    return
+                  }
+                }
+                openFilePicker()
+              })()
             }}
           />
 

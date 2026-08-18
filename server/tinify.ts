@@ -1,6 +1,8 @@
 import { readFile, rename, stat, writeFile } from "node:fs/promises"
 import { dirname, extname, join, parse, resolve } from "node:path"
 
+import { getUniqueSiblingPath, mapLimit } from "./util.ts"
+
 const TINIFY_SHRINK_URL = "https://api.tinify.com/shrink"
 const ALLOWED_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"])
 const MAX_CONCURRENCY = 3
@@ -51,28 +53,13 @@ async function parseJsonSafe<T>(response: Response): Promise<T | null> {
   }
 }
 
-async function getUniqueSiblingPath(inputPath: string): Promise<string> {
-  const parsed = parse(inputPath)
-  let candidate = join(parsed.dir, `${parsed.name}-tinified${parsed.ext}`)
-  let counter = 1
-  while (true) {
-    try {
-      await stat(candidate)
-      candidate = join(parsed.dir, `${parsed.name}-tinified-${counter}${parsed.ext}`)
-      counter += 1
-    } catch {
-      return candidate
-    }
-  }
-}
-
 async function writeOutputFile(
   outputBytes: Uint8Array<ArrayBuffer>,
   originalPath: string,
   replaceOriginal: boolean,
 ): Promise<string> {
   if (!replaceOriginal) {
-    const outputPath = await getUniqueSiblingPath(originalPath)
+    const outputPath = await getUniqueSiblingPath(originalPath, "-tinified")
     await writeFile(outputPath, outputBytes)
     return outputPath
   }
@@ -154,28 +141,6 @@ async function tinifySinglePath(
       error: error instanceof Error ? error.message : "Unexpected Tinify error.",
     }
   }
-}
-
-async function mapLimit<TInput, TOutput>(
-  items: TInput[],
-  limit: number,
-  run: (item: TInput) => Promise<TOutput>,
-): Promise<TOutput[]> {
-  const results: TOutput[] = new Array(items.length)
-  let cursor = 0
-
-  async function worker(): Promise<void> {
-    while (cursor < items.length) {
-      const index = cursor
-      cursor += 1
-      results[index] = await run(items[index])
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, () => worker()),
-  )
-  return results
 }
 
 export async function tinifyPaths(

@@ -2,8 +2,9 @@ import { ExternalLink, FileJson2, Loader2, Link2 } from "lucide-react"
 import { useCallback, useMemo, useState } from "react"
 
 import { ToolSection } from "@/components/orbit/tools/tool-section"
+import { UrlForm } from "@/components/orbit/tools/url-form"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Table,
   TableBody,
@@ -51,8 +52,7 @@ export function SchemaViewerPage() {
   const [result, setResult] = useState<SchemaViewerResponse | null>(null)
 
   const submit = useCallback(
-    async (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
+    async () => {
       setError(null)
       setResult(null)
       setLoading(true)
@@ -111,11 +111,10 @@ export function SchemaViewerPage() {
           ) : null
         }
       >
-        <form className="space-y-3" onSubmit={submit} aria-busy={loading}>
+        <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
-              size="sm"
               variant={mode === "url" ? "highlight" : "outline"}
               onClick={() => setMode("url")}
             >
@@ -124,7 +123,6 @@ export function SchemaViewerPage() {
             </Button>
             <Button
               type="button"
-              size="sm"
               variant={mode === "snippet" ? "highlight" : "outline"}
               onClick={() => setMode("snippet")}
             >
@@ -134,36 +132,37 @@ export function SchemaViewerPage() {
           </div>
 
           {mode === "url" ? (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Input
-                type="url"
-                value={urlInput}
-                onChange={(event) => setUrlInput(event.target.value)}
-                placeholder="https://example.com/"
-                autoComplete="url"
-                className="flex-1"
-              />
-              <Button type="submit" variant="outline" disabled={loading}>
-                Analyze
-              </Button>
-            </div>
+            <UrlForm
+              value={urlInput}
+              onValueChange={setUrlInput}
+              onSubmit={() => void submit()}
+              submitLabel="Analyze"
+              loading={loading}
+              placeholder="https://example.com/"
+            />
           ) : (
-            <div className="space-y-2">
-              <textarea
+            <form
+              className="space-y-2"
+              aria-busy={loading}
+              onSubmit={(event) => {
+                event.preventDefault()
+                void submit()
+              }}
+            >
+              <Textarea
                 value={snippetInput}
                 onChange={(event) => setSnippetInput(event.target.value)}
                 rows={9}
                 placeholder='Paste JSON-LD, HTML, or Microdata, e.g. {"@context":"https://schema.org","@type":"Organization","name":"Acme"}'
-                className="block w-full border border-input bg-transparent px-2.5 py-2 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground/70 focus-visible:border-foreground focus-visible:ring-1 focus-visible:ring-foreground/20 dark:bg-input/15"
               />
               <div className="flex items-center justify-end">
-                <Button type="submit" variant="outline" disabled={loading}>
+                <Button type="submit" variant="highlight" disabled={loading}>
                   Analyze
                 </Button>
               </div>
-            </div>
+            </form>
           )}
-        </form>
+        </div>
 
         {error ? (
           <p className="mt-3 border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] text-destructive">

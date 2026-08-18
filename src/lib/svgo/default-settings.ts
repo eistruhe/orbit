@@ -10,6 +10,7 @@ export type SvgoUiSettings = {
   plugins: Record<SvgoPluginId, boolean>
   multipass: boolean
   pretty: boolean
+  wrapCode: boolean
   floatPrecision: number
   transformPrecision: number
 }
@@ -24,6 +25,7 @@ export function createDefaultSvgoSettings(): SvgoUiSettings {
     plugins,
     multipass: false,
     pretty: false,
+    wrapCode: false,
     floatPrecision: 3,
     transformPrecision: 5,
   }
@@ -63,6 +65,10 @@ export function mergeSvgoSettings(input: unknown): SvgoUiSettings {
         ? parsed.multipass
         : defaults.multipass,
     pretty: typeof parsed.pretty === "boolean" ? parsed.pretty : defaults.pretty,
+    wrapCode:
+      typeof parsed.wrapCode === "boolean"
+        ? parsed.wrapCode
+        : defaults.wrapCode,
     floatPrecision: normalizePrecision(
       parsed.floatPrecision,
       defaults.floatPrecision,

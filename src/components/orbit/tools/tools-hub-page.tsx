@@ -1,53 +1,7 @@
-import {
-  ArrowLeftRight,
-  ChevronRight,
-  FileCode2,
-  FileSearch2,
-  Image as ImageIcon,
-  Link as LinkIcon,
-} from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import { useNavigate } from "@tanstack/react-router"
 
-const tools = [
-  {
-    id: "tinify",
-    name: "Tinify",
-    description: "Compress PNG and JPG images via the TinyPNG API.",
-    icon: ImageIcon,
-    target: "/tools/tinify" as const,
-  },
-  {
-    id: "svgo",
-    name: "SVGO",
-    description: "Optimize one or many SVG files with SVGO settings.",
-    icon: FileCode2,
-    target: "/tools/svgo" as const,
-  },
-  {
-    id: "px-to-rem",
-    name: "Px ↔ rem",
-    description:
-      "Convert between pixels and rem with a configurable root font size.",
-    icon: ArrowLeftRight,
-    target: "/tools/px-to-rem" as const,
-  },
-  {
-    id: "open-graph",
-    name: "Open graph",
-    description:
-      "Preview Open Graph, Twitter, and meta tags for any public URL.",
-    icon: LinkIcon,
-    target: "/tools/open-graph" as const,
-  },
-  {
-    id: "schema-viewer",
-    name: "Schema viewer",
-    description:
-      "Inspect and validate JSON-LD, Microdata, and RDFa from URLs or snippets.",
-    icon: FileSearch2,
-    target: "/tools/schema-viewer" as const,
-  },
-]
+import { TOOLS } from "@/components/orbit/tools/tool-registry"
 
 export function ToolsHubPage() {
   const navigate = useNavigate()
@@ -61,18 +15,18 @@ export function ToolsHubPage() {
         </h2>
         <span className="h-px flex-1 bg-border" aria-hidden />
         <span className="text-[10px] tabular-nums text-foreground/80">
-          {tools.length}
+          {TOOLS.length}
         </span>
       </header>
 
       <div className="grid gap-px bg-border md:grid-cols-2 xl:grid-cols-3 border border-border">
-        {tools.map((tool, idx) => {
+        {TOOLS.map((tool, idx) => {
           const Icon = tool.icon
           return (
             <button
               key={tool.id}
               type="button"
-              onClick={() => navigate({ to: tool.target })}
+              onClick={() => navigate({ to: tool.path })}
               className="group/tool flex flex-col gap-2 bg-card px-3 py-3 text-left transition-colors hover:bg-muted/60"
             >
               <div className="flex items-center justify-between gap-2">

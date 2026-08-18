@@ -1,7 +1,8 @@
-import { Check, Copy, Download, Upload, } from "lucide-react"
+import { Check, Copy, Download } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, } from "react"
 
 import { useOrbit } from "@/components/orbit/orbit-context"
+import { DropZone } from "@/components/orbit/drop-zone"
 import { ToolSection } from "@/components/orbit/tools/tool-section"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -41,6 +42,10 @@ function makeId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+function svgPreviewUri(svg: string): string {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+}
+
 function triggerSvgDownload(filename: string, content: string): void {
   const blob = new Blob([content], { type: "image/svg+xml;charset=utf-8" })
   const url = URL.createObjectURL(blob)
@@ -67,7 +72,6 @@ export function SvgoPage() {
 
   const [settings, setSettings] = useState<SvgoUiSettings>(persistedSettings)
   const [files, setFiles] = useState<SvgInputItem[]>([])
-  const [dropActive, setDropActive] = useState(false)
   const [pluginQuery, setPluginQuery] = useState("")
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -164,6 +168,51 @@ export function SvgoPage() {
     setFiles((current) => [...current, ...nextItems])
   }, [])
 
+  useEffect(() => {
+    function onPaste(event: ClipboardEvent) {
+      const target = event.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return
+      }
+
+      const data = event.clipboardData
+      if (!data) return
+
+      const svgFiles = Array.from(data.files).filter(isSvgFile)
+      if (svgFiles.length > 0) {
+        event.preventDefault()
+        void readSvgFiles(svgFiles)
+        return
+      }
+
+      const text = data.getData("text/plain").trim()
+      if (!text.toLowerCase().includes("<svg")) return
+
+      event.preventDefault()
+      setFiles((current) => {
+        const pastedCount = current.filter((item) =>
+          item.name.startsWith("pasted-"),
+        ).length
+        return [
+          ...current,
+          {
+            id: makeId("svg"),
+            name: `pasted-${pastedCount + 1}.svg`,
+            original: text,
+          },
+        ]
+      })
+    }
+
+    window.addEventListener("paste", onPaste)
+    return () => window.removeEventListener("paste", onPaste)
+  }, [readSvgFiles])
+
   const updatePluginEnabled = useCallback((pluginId: string, enabled: boolean) => {
     setSettings((current) => {
       const nextPlugins = {
@@ -217,49 +266,19 @@ export function SvgoPage() {
         }
       >
         <div className="space-y-3">
-          <label
-            onDragOver={(event) => {
-              event.preventDefault()
-              setDropActive(true)
-            }}
-            onDragLeave={(event) => {
-              event.preventDefault()
-              setDropActive(false)
-            }}
-            onDrop={(event) => {
-              event.preventDefault()
-              setDropActive(false)
-              void readSvgFiles(event.dataTransfer.files)
-            }}
-            className={cn(
-              "flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-border px-3 py-4 text-center transition-colors",
-              dropActive ? "bg-muted/50" : "bg-background",
-            )}
-          >
-            <Upload className="size-4 text-muted-foreground" />
-            <span className="text-[11px] text-muted-foreground">
-              Drag SVG files here or click to upload.
-            </span>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".svg,image/svg+xml"
-              multiple
-              className="sr-only"
-              onChange={(event) => {
-                const selected = event.target.files
-                if (!selected || selected.length === 0) return
-                void readSvgFiles(selected)
-                event.currentTarget.value = ""
-              }}
-            />
-          </label>
+          <DropZone
+            label="Drag SVG files here, click to upload, or paste SVG code (⌘V)"
+            hint="SVG"
+            accept=".svg,image/svg+xml"
+            multiple
+            onFiles={(files) => void readSvgFiles(files)}
+            inputRef={fileInputRef}
+          />
 
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="outline"
-              size="sm"
               onClick={() => fileInputRef.current?.click()}
             >
               Upload SVGs
@@ -267,7 +286,6 @@ export function SvgoPage() {
             <Button
               type="button"
               variant="outline"
-              size="sm"
               onClick={() => setFiles([])}
               disabled={files.length === 0}
             >
@@ -276,7 +294,6 @@ export function SvgoPage() {
             <Button
               type="button"
               variant="outline"
-              size="sm"
               onClick={() => void handleCopy(copyAllText, "all")}
               disabled={!copyAllText}
             >
@@ -295,7 +312,6 @@ export function SvgoPage() {
             <Button
               type="button"
               variant="outline"
-              size="sm"
               onClick={downloadAll}
               disabled={optimizedFiles.every((item) => !item.optimized)}
             >
@@ -354,6 +370,18 @@ export function SvgoPage() {
                   }
                 />
                 Prettify markup
+              </label>
+              <label className="flex items-center gap-2 text-[11px] text-foreground">
+                <Checkbox
+                  checked={settings.wrapCode}
+                  onCheckedChange={(checked) =>
+                    setSettings((current) => ({
+                      ...current,
+                      wrapCode: checked === true,
+                    }))
+                  }
+                />
+                Wrap code
               </label>
             </div>
 
@@ -462,7 +490,6 @@ export function SvgoPage() {
                       <Button
                         type="button"
                         variant="outline"
-                        size="sm"
                         onClick={() =>
                           void handleCopy(item.optimized ?? "", item.id)
                         }
@@ -483,7 +510,6 @@ export function SvgoPage() {
                       <Button
                         type="button"
                         variant="outline"
-                        size="sm"
                         onClick={() =>
                           item.optimized
                             ? triggerSvgDownload(item.name, item.optimized)
@@ -499,9 +525,23 @@ export function SvgoPage() {
                   {item.error ? (
                     <p className="text-[11px] text-destructive">{item.error}</p>
                   ) : (
-                    <pre className="max-h-44 overflow-auto border border-border bg-card p-2 text-[10px] leading-relaxed text-foreground">
-                      {item.optimized}
-                    </pre>
+                    <div className="flex gap-2">
+                      <div className="flex size-28 shrink-0 items-center justify-center border border-border bg-card p-2 [background-image:repeating-conic-gradient(rgba(128,128,128,0.12)_0%_25%,transparent_0%_50%)] [background-size:12px_12px]">
+                        <img
+                          src={svgPreviewUri(item.optimized ?? "")}
+                          alt={`Preview of ${item.name}`}
+                          className="max-h-full max-w-full"
+                        />
+                      </div>
+                      <pre
+                        className={cn(
+                          "max-h-44 min-w-0 flex-1 overflow-auto border border-border bg-card p-2 text-[10px] leading-relaxed text-foreground",
+                          settings.wrapCode && "whitespace-pre-wrap break-all",
+                        )}
+                      >
+                        {item.optimized}
+                      </pre>
+                    </div>
                   )}
                 </article>
               ))
