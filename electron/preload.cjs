@@ -18,6 +18,14 @@ contextBridge.exposeInMainWorld("orbitFiles", {
       return []
     }
   },
+  async pickDirectory() {
+    try {
+      const path = await ipcRenderer.invoke("orbit:pick-directory")
+      return typeof path === "string" && path.length > 0 ? path : null
+    } catch {
+      return null
+    }
+  },
 })
 
 contextBridge.exposeInMainWorld("orbitUpdates", {

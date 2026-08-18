@@ -33,7 +33,7 @@ export type RepoRecord = {
   error?: string
 }
 
-const SKIP_DIR_NAMES = new Set([
+export const SKIP_DIR_NAMES = new Set([
   "node_modules",
   "vendor",
   "dist",
@@ -98,7 +98,7 @@ async function getRepoDiskMetrics(topLevelPath: string): Promise<{
   return { workingTreeBytes, nodeModulesBytes, lastFsMtimeIso }
 }
 
-async function collectGitRoots(
+export async function collectGitRoots(
   dir: string,
   depth: number,
   acc: string[],

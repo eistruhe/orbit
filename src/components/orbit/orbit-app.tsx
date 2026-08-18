@@ -2,6 +2,7 @@ import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router"
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+import { CommandPalette } from "@/components/orbit/command-palette"
 import { MetadataDialog } from "@/components/orbit/metadata-dialog"
 import {
   OrbitContext,
@@ -15,8 +16,10 @@ import type {
 } from "@/components/orbit/project-filters"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import {
+  type DevServerInfo,
   type OpenTarget,
   fetchPreferences,
+  listDevServers,
   openRepoPath,
   runScan,
   savePreferences,
@@ -146,6 +149,41 @@ export function OrbitApp() {
   const [actionFeedback, setActionFeedback] = useState<string | null>(null)
   const [metaDialogPath, setMetaDialogPath] = useState<string | null>(null)
   const [metaSaving, setMetaSaving] = useState(false)
+  const [devServers, setDevServers] = useState<DevServerInfo[]>([])
+
+  const refreshDevServers = useCallback(async () => {
+    try {
+      setDevServers(await listDevServers())
+    } catch {
+      // API not reachable — keep the last known state.
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshDevServers()
+  }, [refreshDevServers])
+
+  // Poll dev-server status while any managed process exists. Polling stops on
+  // its own once the list is empty; starting a server (refreshDevServers from
+  // the detail page) repopulates the list and resumes it.
+  useEffect(() => {
+    if (devServers.length === 0) return
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return
+      void refreshDevServers()
+    }, 2500)
+    return () => window.clearInterval(interval)
+  }, [devServers.length, refreshDevServers])
+
+  const devServersByPath = useMemo(() => {
+    const map = new Map<string, DevServerInfo>()
+    for (const server of devServers) {
+      if (server.status === "starting" || server.status === "running") {
+        map.set(server.repoPath, server)
+      }
+    }
+    return map
+  }, [devServers])
 
   useEffect(() => {
     if (!actionFeedback) return
@@ -535,6 +573,7 @@ export function OrbitApp() {
     activeLibraryId: activeLibrary?.id ?? PRIMARY_LIBRARY_ID,
     activeLibrary: activeLibrary ?? projectLibraries[0],
     repos,
+    allRepos,
     scanRoot,
     scannedAt,
     loading,
@@ -557,6 +596,9 @@ export function OrbitApp() {
     repoByPath,
     repoNotes,
     repoTags,
+    devServers,
+    devServersByPath,
+    refreshDevServers,
     setQuery,
     setOwnership,
     setStatus,
@@ -601,6 +643,7 @@ export function OrbitApp() {
             <Outlet />
           </main>
         </div>
+        <CommandPalette />
         {metaDialogPath ? (
           <MetadataDialog
             path={metaDialogPath}

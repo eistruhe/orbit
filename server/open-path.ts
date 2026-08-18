@@ -20,6 +20,25 @@ export async function resolvePathUnderAllowedRoots(
   pathStr: string,
   allowedRoots: string[],
 ): Promise<string> {
+  return resolveUnderAllowedRoots(pathStr, allowedRoots, "directory")
+}
+
+/**
+ * Like `resolvePathUnderAllowedRoots`, but for files: the resolved realpath
+ * must be an existing regular file under one of the allowed roots.
+ */
+export async function resolveFileUnderAllowedRoots(
+  pathStr: string,
+  allowedRoots: string[],
+): Promise<string> {
+  return resolveUnderAllowedRoots(pathStr, allowedRoots, "file")
+}
+
+async function resolveUnderAllowedRoots(
+  pathStr: string,
+  allowedRoots: string[],
+  kind: "directory" | "file",
+): Promise<string> {
   if (allowedRoots.length === 0) {
     throw new Error("No scan roots are configured")
   }
@@ -53,8 +72,11 @@ export async function resolvePathUnderAllowedRoots(
   }
 
   const st = await stat(targetReal)
-  if (!st.isDirectory()) {
+  if (kind === "directory" && !st.isDirectory()) {
     throw new Error("Path is not a directory")
+  }
+  if (kind === "file" && !st.isFile()) {
+    throw new Error("Path is not a file")
   }
   return targetReal
 }

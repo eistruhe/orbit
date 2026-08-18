@@ -5,6 +5,7 @@ import { memo, useRef } from "react"
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { StatusBadge } from "@/components/orbit/status-badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Tooltip,
   TooltipContent,
@@ -14,16 +15,25 @@ import { formatBytes } from "@/lib/format-size"
 import { syncLabel } from "@/lib/repo-facts"
 import { formatRelativeFromIso } from "@/lib/time"
 import { cn } from "@/lib/utils"
-import type { OpenTarget } from "@/lib/api"
+import type { DevServerInfo, OpenTarget } from "@/lib/api"
 import type { RepoRecord } from "@/types/repo"
 
+function devServerChipLabel(server: DevServerInfo): string {
+  if (!server.detectedUrl) return "dev"
+  try {
+    const port = new URL(server.detectedUrl).port
+    return port ? `:${port}` : "dev"
+  } catch {
+    return "dev"
+  }
+}
+
 /**
- * Six columns: index, actions, project, status, activity, open.
- * Status / activity / open use fixed tracks so each virtualized row (its own grid)
- * lines up with neighbors.
+ * Seven columns: select, index, actions, project, status, activity, open.
+ * Fixed tracks so each virtualized row (its own grid) lines up with neighbors.
  */
 const ROW_GRID_CLASS =
-  "grid grid-cols-[3rem_4.5rem_minmax(0,1fr)_6rem_13rem_8rem] items-stretch gap-0"
+  "grid grid-cols-[2.25rem_3rem_4.5rem_minmax(0,1fr)_6rem_13rem_8rem] items-stretch gap-0"
 
 type ProjectTableProps = {
   repos: RepoRecord[]
@@ -35,6 +45,10 @@ type ProjectTableProps = {
   repoNotes: Record<string, string>
   repoTags: Record<string, string[]>
   onEditMetadata: (path: string) => void
+  devServersByPath?: Map<string, DevServerInfo>
+  selectedPaths: Set<string>
+  onToggleSelect: (path: string, index: number, shiftKey: boolean) => void
+  onToggleSelectAll: () => void
 }
 
 const ESTIMATE_ROW_PX = 96
@@ -52,7 +66,13 @@ export const ProjectTable = memo(function ProjectTable({
   repoNotes,
   repoTags,
   onEditMetadata,
+  devServersByPath,
+  selectedPaths,
+  onToggleSelect,
+  onToggleSelectAll,
 }: ProjectTableProps) {
+  const selectedInView = repos.filter((repo) => selectedPaths.has(repo.path)).length
+  const allSelected = repos.length > 0 && selectedInView === repos.length
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const virtualizer = useVirtualizer({
@@ -106,6 +126,18 @@ export const ProjectTable = memo(function ProjectTable({
             )}
             role="row"
           >
+            <div
+              className="cursor-pointer"
+              onClick={onToggleSelectAll}
+              title={allSelected ? "Deselect all" : "Select all"}
+            >
+              <Checkbox
+                checked={allSelected}
+                indeterminate={selectedInView > 0 && !allSelected}
+                className="pointer-events-none"
+                aria-label="Select all projects"
+              />
+            </div>
             <div>#</div>
             <div aria-hidden />
             <div>Project</div>
@@ -124,6 +156,7 @@ export const ProjectTable = memo(function ProjectTable({
               const sync = syncLabel(repo)
               const tags = repoTags[repo.path] ?? []
               const note = repoNotes[repo.path]
+              const devServer = devServersByPath?.get(repo.path) ?? null
               const isEven = virtualRow.index % 2 === 0
               return (
                 <div
@@ -142,6 +175,20 @@ export const ProjectTable = memo(function ProjectTable({
                   }}
                   onClick={() => onOpen(repo.path)}
                 >
+                  <div
+                    className="flex cursor-pointer items-start px-2 py-2.5"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onToggleSelect(repo.path, virtualRow.index, e.shiftKey)
+                    }}
+                  >
+                    <Checkbox
+                      checked={selectedPaths.has(repo.path)}
+                      className="pointer-events-none"
+                      aria-label={`Select ${repo.name}`}
+                    />
+                  </div>
+
                   <div className="flex items-start px-2 py-2">
                     <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
                       {String(virtualRow.index + 1).padStart(3, "0")}
@@ -188,8 +235,20 @@ export const ProjectTable = memo(function ProjectTable({
 
                   <div className="min-w-0 px-2 py-2">
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-[12px] font-medium text-foreground">
+                      <span className="flex items-center gap-2 text-[12px] font-medium text-foreground">
                         {repo.name}
+                        {devServer ? (
+                          <span
+                            className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.08em] text-success"
+                            title={devServer.detectedUrl ?? "Dev server running"}
+                          >
+                            <span
+                              className="size-1.5 animate-pulse rounded-full bg-success shadow-[0_0_6px_currentColor]"
+                              aria-hidden
+                            />
+                            {devServerChipLabel(devServer)}
+                          </span>
+                        ) : null}
                       </span>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0 text-[10px] text-muted-foreground">
                         {repo.branch ? (

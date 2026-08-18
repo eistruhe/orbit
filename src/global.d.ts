@@ -5,6 +5,7 @@ declare global {
     orbitFiles?: {
       getPathForFile: (file: File) => string
       pickImagePaths: () => Promise<string[]>
+      pickDirectory: () => Promise<string | null>
     }
     orbitUpdates?: {
       checkForUpdates: () => Promise<

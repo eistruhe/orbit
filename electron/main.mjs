@@ -490,6 +490,15 @@ ipcMain.handle("orbit:pick-image-paths", async () => {
   return result.filePaths
 })
 
+ipcMain.handle("orbit:pick-directory", async () => {
+  const window = BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined
+  const result = await dialog.showOpenDialog(window, {
+    properties: ["openDirectory", "createDirectory"],
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths[0]
+})
+
 /**
  * @returns Structured result shared by IPC and the macOS App menu command.
  */

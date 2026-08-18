@@ -5,7 +5,7 @@ import type {
   ProjectTypeFilter,
   StatusFilter,
 } from "@/components/orbit/project-filters"
-import type { OpenTarget } from "@/lib/api"
+import type { DevServerInfo, OpenTarget } from "@/lib/api"
 import type { Preferences, ProjectLibrary, RepoRecord } from "@/types/repo"
 
 export type OrbitContextValue = {
@@ -14,6 +14,8 @@ export type OrbitContextValue = {
   activeLibraryId: string
   activeLibrary: ProjectLibrary
   repos: RepoRecord[]
+  /** Flat list across all scanned libraries. */
+  allRepos: RepoRecord[]
   scanRoot: string | null
   scannedAt: string | null
   loading: boolean
@@ -36,6 +38,10 @@ export type OrbitContextValue = {
   repoByPath: Map<string, RepoRecord>
   repoNotes: Record<string, string>
   repoTags: Record<string, string[]>
+  devServers: DevServerInfo[]
+  /** Active (starting/running) dev servers keyed by repo path. */
+  devServersByPath: Map<string, DevServerInfo>
+  refreshDevServers: () => Promise<void>
   setQuery: (value: string) => void
   setOwnership: (value: OwnershipFilter) => void
   setStatus: (value: StatusFilter) => void

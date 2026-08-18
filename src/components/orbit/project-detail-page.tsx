@@ -18,6 +18,8 @@ import { Link, useParams } from "@tanstack/react-router"
 import { useEffect, useMemo, useState } from "react"
 
 import { DeleteNodeModulesDialog } from "@/components/orbit/delete-node-modules-dialog"
+import { DevServerSection } from "@/components/orbit/dev-server-section"
+import { ReadmeSection } from "@/components/orbit/readme-section"
 import { useOrbit } from "@/components/orbit/orbit-context"
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { StatusBadge } from "@/components/orbit/status-badge"
@@ -340,6 +342,8 @@ export function ProjectDetailPage() {
         </div>
       </Section>
 
+      <DevServerSection repo={repo} />
+
       <div className="grid gap-4 md:grid-cols-2">
         <Section title="Latest Commit" icon={GitCommit}>
           <p className="mb-3 border-l-2 border-highlight bg-highlight/5 px-2 py-1 text-[12px] leading-relaxed text-foreground">
@@ -468,6 +472,8 @@ export function ProjectDetailPage() {
           </div>
         ) : null}
       </Section>
+
+      <ReadmeSection repoPath={repo.path} />
 
       <DeleteNodeModulesDialog
         open={deleteNodeModulesDialogOpen}

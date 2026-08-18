@@ -1,9 +1,10 @@
-import { ChevronDown, ChevronRight, Folder, Pin, Settings, Wrench } from "lucide-react"
+import { Activity, ChevronDown, ChevronRight, Folder, Pin, Search, Settings, Wrench } from "lucide-react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
 import { memo, startTransition, useRef, useState } from "react"
 
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { ThemeToggle } from "@/components/orbit/theme-toggle"
+import { TOOLS } from "@/components/orbit/tools/tool-registry"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import type { OpenTarget } from "@/lib/api"
@@ -109,14 +110,6 @@ function SubNavItem({ label, active, onClick }: SubNavItemProps) {
 const TOOLS_SUB_NAV_ROW_PX = 32
 const TOOLS_SUB_NAV_ROW_CENTER_PX = TOOLS_SUB_NAV_ROW_PX / 2
 
-const TOOLS_SUB_NAV_PATHS = [
-  "/tools/tinify",
-  "/tools/svgo",
-  "/tools/px-to-rem",
-  "/tools/open-graph",
-  "/tools/schema-viewer",
-] as const
-
 /**
  * Wraps a list of SubNavItems in a vertical rail aligned to the parent
  * NavItem icon column.
@@ -183,11 +176,15 @@ export const SidebarPanel = memo(function SidebarPanel({
     (library) => library.id !== "primary",
   )
   const toolsActive = pathname.startsWith("/tools")
+  const portsActive = pathname.startsWith("/ports")
+  const searchActive = pathname.startsWith("/search")
   const settingsActive = pathname.startsWith("/settings")
   const [manualToolsExpanded, setManualToolsExpanded] = useState(false)
   const toolsExpanded = toolsActive || manualToolsExpanded
   const isToolsHub = pathname === "/tools" || pathname === "/tools/"
-  const toolsSubNavActiveIndex = TOOLS_SUB_NAV_PATHS.findIndex((p) => pathname === p)
+  const toolsSubNavActiveIndex = TOOLS.findIndex(
+    (tool) => pathname === tool.path,
+  )
 
   return (
     <aside className="sticky top-0 z-20 flex h-svh w-60 shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar text-sidebar-foreground">
@@ -200,123 +197,112 @@ export const SidebarPanel = memo(function SidebarPanel({
         </div>
       </div>
 
-      <nav className="flex flex-1 flex-col overflow-hidden py-2">
-        <div>
-          <SectionLabel>Main</SectionLabel>
-          <NavItem
-            icon={Folder}
-            label={primaryLibrary?.label || "Projects"}
-            active={primaryProjectsActive}
-            onClick={() =>
-              startTransition(() => {
-                navigate({ to: "/" })
-              })
-            }
-          />
-          {additionalLibraries.map((library) => (
+      <nav className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {/* Everything above Settings scrolls as one column, so a tall nav
+            (tools expanded, many pins) stays reachable on short windows. */}
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="pt-2">
+            <SectionLabel>Main</SectionLabel>
             <NavItem
-              key={library.id}
               icon={Folder}
-              label={library.label}
-              active={activeLibraryId === library.id && projectsActive}
+              label={primaryLibrary?.label || "Projects"}
+              active={primaryProjectsActive}
               onClick={() =>
                 startTransition(() => {
-                  navigate({
-                    to: "/projects/lib/$libraryId",
-                    params: { libraryId: library.id },
-                  })
+                  navigate({ to: "/" })
                 })
               }
             />
-          ))}
-          <NavItem
-            icon={Wrench}
-            label="Tools"
-            active={toolsActive}
-            onClick={() =>
-              startTransition(() => {
-                if (!toolsActive) {
-                  navigate({ to: "/tools" })
-                  setManualToolsExpanded(true)
-                  return
-                }
-                if (!isToolsHub) {
-                  navigate({ to: "/tools" })
-                  return
-                }
-                setManualToolsExpanded((current) => !current)
-              })
-            }
-            trailing={
-              toolsExpanded ? (
-                <ChevronDown
-                  className="size-3 shrink-0 text-muted-foreground/70"
-                  aria-hidden
-                />
-              ) : (
-                <ChevronRight
-                  className="size-3 shrink-0 text-muted-foreground/70"
-                  aria-hidden
-                />
-              )
-            }
-          />
-          {toolsExpanded ? (
-            <SubNavRail activeIndex={toolsSubNavActiveIndex}>
-              <SubNavItem
-                label="Tinify"
-                active={pathname === "/tools/tinify"}
+            {additionalLibraries.map((library) => (
+              <NavItem
+                key={library.id}
+                icon={Folder}
+                label={library.label}
+                active={activeLibraryId === library.id && projectsActive}
                 onClick={() =>
                   startTransition(() => {
-                    navigate({ to: "/tools/tinify" })
+                    navigate({
+                      to: "/projects/lib/$libraryId",
+                      params: { libraryId: library.id },
+                    })
                   })
                 }
               />
-              <SubNavItem
-                label="SVGO"
-                active={pathname === "/tools/svgo"}
-                onClick={() =>
-                  startTransition(() => {
-                    navigate({ to: "/tools/svgo" })
-                  })
-                }
-              />
-              <SubNavItem
-                label="Px ↔ rem"
-                active={pathname === "/tools/px-to-rem"}
-                onClick={() =>
-                  startTransition(() => {
-                    navigate({ to: "/tools/px-to-rem" })
-                  })
-                }
-              />
-              <SubNavItem
-                label="Open graph"
-                active={pathname === "/tools/open-graph"}
-                onClick={() =>
-                  startTransition(() => {
-                    navigate({ to: "/tools/open-graph" })
-                  })
-                }
-              />
-              <SubNavItem
-                label="Schema viewer"
-                active={pathname === "/tools/schema-viewer"}
-                onClick={() =>
-                  startTransition(() => {
-                    navigate({ to: "/tools/schema-viewer" })
-                  })
-                }
-              />
-            </SubNavRail>
-          ) : null}
-        </div>
+            ))}
+            <NavItem
+              icon={Wrench}
+              label="Tools"
+              active={toolsActive}
+              onClick={() =>
+                startTransition(() => {
+                  if (!toolsActive) {
+                    navigate({ to: "/tools" })
+                    setManualToolsExpanded(true)
+                    return
+                  }
+                  if (!isToolsHub) {
+                    navigate({ to: "/tools" })
+                    return
+                  }
+                  setManualToolsExpanded((current) => !current)
+                })
+              }
+              trailing={
+                toolsExpanded ? (
+                  <ChevronDown
+                    className="size-3 shrink-0 text-muted-foreground/70"
+                    aria-hidden
+                  />
+                ) : (
+                  <ChevronRight
+                    className="size-3 shrink-0 text-muted-foreground/70"
+                    aria-hidden
+                  />
+                )
+              }
+            />
+            {toolsExpanded ? (
+              <SubNavRail activeIndex={toolsSubNavActiveIndex}>
+                {TOOLS.map((tool) => (
+                  <SubNavItem
+                    key={tool.id}
+                    label={tool.name}
+                    active={pathname === tool.path}
+                    onClick={() =>
+                      startTransition(() => {
+                        navigate({ to: tool.path })
+                      })
+                    }
+                  />
+                ))}
+              </SubNavRail>
+            ) : null}
+            <NavItem
+              icon={Search}
+              label="Search"
+              active={searchActive}
+              onClick={() =>
+                startTransition(() => {
+                  navigate({ to: "/search" })
+                })
+              }
+            />
+            <NavItem
+              icon={Activity}
+              label="Ports"
+              active={portsActive}
+              onClick={() =>
+                startTransition(() => {
+                  navigate({ to: "/ports" })
+                })
+              }
+            />
+          </div>
 
-        <div className="flex min-h-0 flex-1 flex-col pt-2">
-          <SectionLabel trailing={pinned.length > 0 ? pinned.length : undefined}>
-            Library · Pinned
-          </SectionLabel>
-          <ScrollArea className="min-h-0 flex-1">
+          <div className="pt-2">
+            <SectionLabel trailing={pinned.length > 0 ? pinned.length : undefined}>
+              Library · Pinned
+            </SectionLabel>
             <ul className="flex flex-col">
               {pinned.length === 0 ? (
                 <li className="px-3 py-2 text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70">
@@ -347,10 +333,10 @@ export const SidebarPanel = memo(function SidebarPanel({
                 ))
               )}
             </ul>
-          </ScrollArea>
-        </div>
+          </div>
+        </ScrollArea>
 
-        <div className="pt-2">
+        <div className="py-2">
           <NavItem
             icon={Settings}
             label="Settings"

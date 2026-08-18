@@ -154,9 +154,16 @@
   * {
     @apply rounded-none border-border outline-ring/50 focus-visible:ring-0!;
   }
-  :not(input):not(textarea):not(select):not(option):not([contenteditable="true"]) {
+  /* [data-selectable] subtrees (e.g. search result code lines) stay selectable. */
+  :not(input):not(textarea):not(select):not(option):not([contenteditable="true"]):not([data-selectable]):not([data-selectable] *) {
     -webkit-user-select: none;
     user-select: none;
+  }
+  [data-selectable],
+  [data-selectable] * {
+    -webkit-user-select: text;
+    user-select: text;
+    cursor: text;
   }
   body {
     @apply bg-background text-foreground;

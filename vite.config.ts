@@ -27,6 +27,11 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    // WASM codec loads its .wasm via `new URL(..., import.meta.url)`;
+    // pre-bundling would break that asset resolution.
+    exclude: ["@jsquash/avif"],
+  },
   server: {
     proxy: {
       "/api": {
