@@ -1,11 +1,25 @@
+import { Pin } from "lucide-react"
 import { Outlet, useMatchRoute } from "@tanstack/react-router"
+import { useEffect } from "react"
 
 import { TOOLS } from "@/components/orbit/tools/tool-registry"
+import {
+  recordToolVisit,
+  toggleToolPin,
+  useToolLists,
+} from "@/hooks/use-tool-pins"
+import { cn } from "@/lib/utils"
 
 export function ToolsLayout() {
   const matchRoute = useMatchRoute()
-  const subtitle =
-    TOOLS.find((tool) => matchRoute({ to: tool.path }))?.name ?? ""
+  const activeTool = TOOLS.find((tool) => matchRoute({ to: tool.path }))
+  const activeToolId = activeTool?.id
+  const { pinned } = useToolLists()
+  const activeToolPinned = activeToolId ? pinned.includes(activeToolId) : false
+
+  useEffect(() => {
+    if (activeToolId) recordToolVisit(activeToolId)
+  }, [activeToolId])
 
   return (
     <>
@@ -14,12 +28,29 @@ export function ToolsLayout() {
         <h2 className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground">
           Tools
         </h2>
-        {subtitle ? (
+        {activeTool ? (
           <>
             <span className="text-border-strong">/</span>
             <span className="text-[11px] uppercase tracking-[0.16em] text-foreground">
-              {subtitle}
+              {activeTool.name}
             </span>
+            <button
+              type="button"
+              onClick={() => toggleToolPin(activeTool.id)}
+              aria-pressed={activeToolPinned}
+              title={activeToolPinned ? "Unpin from sidebar" : "Pin to sidebar"}
+              className={cn(
+                "app-no-drag ml-auto flex size-6 items-center justify-center transition-colors",
+                activeToolPinned
+                  ? "text-highlight"
+                  : "text-muted-foreground/60 hover:text-foreground",
+              )}
+            >
+              <Pin
+                className={cn("size-3.5", activeToolPinned && "fill-current")}
+                aria-hidden
+              />
+            </button>
           </>
         ) : (
           <>

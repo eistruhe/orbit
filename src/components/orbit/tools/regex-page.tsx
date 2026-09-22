@@ -125,7 +125,7 @@ export function RegexPage() {
   }, [pattern, flags, testText, mode, replacement])
 
   const matches = useMemo(
-    () => (result && "matches" in result ? result.matches : []),
+    () => (result && "matches" in result ? (result.matches ?? []) : []),
     [result],
   )
   const hasGroups = matches.some((match) => match.groups.length > 0)

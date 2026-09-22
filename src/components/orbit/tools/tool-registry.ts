@@ -30,6 +30,17 @@ import {
   Type,
 } from "lucide-react"
 
+export const TOOL_CATEGORIES = [
+  { id: "images", label: "Images & assets" },
+  { id: "css", label: "CSS & design" },
+  { id: "seo", label: "SEO & content" },
+  { id: "network", label: "Network & domains" },
+  { id: "data", label: "Text & data" },
+  { id: "projects", label: "Projects" },
+] as const
+
+export type ToolCategoryId = (typeof TOOL_CATEGORIES)[number]["id"]
+
 export type ToolMeta = {
   id: string
   /** Absolute route path under the tools layout. */
@@ -66,6 +77,7 @@ export type ToolMeta = {
   name: string
   description: string
   icon: React.ComponentType<{ className?: string }>
+  category: ToolCategoryId
 }
 
 const TOOL_ENTRIES: ToolMeta[] = [
@@ -75,6 +87,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Cleanup",
     description:
       "Reclaim disk space: delete node_modules of stale projects across all libraries.",
+    category: "projects",
     icon: Sparkles,
   },
   {
@@ -82,6 +95,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     path: "/tools/tinify",
     name: "Tinify",
     description: "Compress PNG and JPG images via the TinyPNG API.",
+    category: "images",
     icon: ImageIcon,
   },
   {
@@ -90,6 +104,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Image convert",
     description:
       "Convert images to WebP or AVIF locally, with optional srcset widths.",
+    category: "images",
     icon: ImageDown,
   },
   {
@@ -98,6 +113,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Image crop",
     description:
       "Crop images interactively with fixed ratios, free form, or a circular mask.",
+    category: "images",
     icon: Crop,
   },
   {
@@ -106,6 +122,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "CSV viewer",
     description:
       "Inspect CSV/TSV from file or clipboard: delimiter, search, sorting, column stats.",
+    category: "data",
     icon: Table2,
   },
   {
@@ -114,6 +131,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Dependency audit",
     description:
       "Find outdated npm dependencies across one or all scanned projects.",
+    category: "projects",
     icon: Blocks,
   },
   {
@@ -122,6 +140,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Env compare",
     description:
       "Diff .env files of a project by key — missing, extra, and empty entries.",
+    category: "projects",
     icon: KeyRound,
   },
   {
@@ -130,6 +149,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "DNS lookup",
     description:
       "Resolve DNS records via Cloudflare and Google DoH — spot propagation differences.",
+    category: "network",
     icon: Network,
   },
   {
@@ -138,6 +158,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "SSL check",
     description:
       "Check certificate expiry, issuer, chain, and SANs for a list of domains.",
+    category: "network",
     icon: ShieldCheck,
   },
   {
@@ -146,6 +167,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "JSON viewer",
     description:
       "Inspect, format, and search JSON; copy node paths and generate TypeScript types.",
+    category: "data",
     icon: FileJson2,
   },
   {
@@ -154,6 +176,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "QR code",
     description:
       "Generate QR codes for links, Wi-Fi, and vCards — export as SVG or PNG.",
+    category: "images",
     icon: QrCode,
   },
   {
@@ -162,6 +185,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "EXIF",
     description:
       "View image metadata including GPS, and strip it via local re-encode.",
+    category: "images",
     icon: Camera,
   },
   {
@@ -170,6 +194,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Redirect rules",
     description:
       "Turn old → new URL lists into .htaccess, nginx, Vercel, or Netlify syntax.",
+    category: "network",
     icon: Signpost,
   },
   {
@@ -178,6 +203,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "String utils",
     description:
       "Slug, case conversions, and character/word/byte counts for any text.",
+    category: "data",
     icon: Type,
   },
   {
@@ -186,6 +212,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Timestamp & cron",
     description:
       "Convert Unix timestamps, ISO dates, and time zones; explain cron expressions.",
+    category: "data",
     icon: Clock,
   },
   {
@@ -194,6 +221,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "SERP preview",
     description:
       "Preview Google snippets with pixel-width limits for title and description.",
+    category: "seo",
     icon: TextSearch,
   },
   {
@@ -202,6 +230,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Encoder",
     description:
       "Encode and decode Base64, URLs, and HTML entities; inspect JWTs.",
+    category: "data",
     icon: Binary,
   },
   {
@@ -210,6 +239,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Regex",
     description:
       "Test regular expressions with match highlighting, groups, and replace preview.",
+    category: "data",
     icon: Regex,
   },
   {
@@ -218,6 +248,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Favicon",
     description:
       "Generate favicon.ico, touch icons, and a web manifest from one image.",
+    category: "images",
     icon: Star,
   },
   {
@@ -225,6 +256,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     path: "/tools/svgo",
     name: "SVGO",
     description: "Optimize one or many SVG files with SVGO settings.",
+    category: "images",
     icon: FileCode2,
   },
   {
@@ -233,6 +265,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Px ↔ rem",
     description:
       "Convert between pixels and rem with a configurable root font size.",
+    category: "css",
     icon: ArrowLeftRight,
   },
   {
@@ -241,6 +274,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Clamp()",
     description:
       "Fluid typography and spacing: generate CSS clamp() between two viewports.",
+    category: "css",
     icon: Ruler,
   },
   {
@@ -249,6 +283,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Color convert",
     description:
       "Convert any color between HEX, RGB, HSL, LAB, LCH, OKLCH, and more — edit any format.",
+    category: "css",
     icon: Palette,
   },
   {
@@ -257,6 +292,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Contrast",
     description:
       "WCAG contrast checker and color converter for hex, RGB, HSL, and OKLCH.",
+    category: "css",
     icon: Contrast,
   },
   {
@@ -265,6 +301,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Diff",
     description:
       "Compare two texts or code snippets with a split or unified diff view.",
+    category: "data",
     icon: GitCompareArrows,
   },
   {
@@ -273,6 +310,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "SEO audit",
     description:
       "Audit a URL: SEO checks, headings, links, page weight, and social previews.",
+    category: "seo",
     icon: SearchCheck,
   },
   {
@@ -281,6 +319,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Redirects",
     description:
       "Trace redirect chains and audit security and caching headers.",
+    category: "network",
     icon: Route,
   },
   {
@@ -289,6 +328,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Robots & sitemap",
     description:
       "Validate robots.txt rules and every referenced sitemap of a site.",
+    category: "seo",
     icon: Bot,
   },
   {
@@ -297,6 +337,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     name: "Schema viewer",
     description:
       "Inspect and validate JSON-LD, Microdata, and RDFa from URLs or snippets.",
+    category: "seo",
     icon: FileSearch2,
   },
 ]

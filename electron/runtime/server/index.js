@@ -5499,9 +5499,9 @@ var init_HowToTip = __esm(() => {
 
 // server/index.ts
 import { execFile as execFile5 } from "child_process";
-import { realpath as realpath3, rm, stat as stat9 } from "fs/promises";
+import { realpath as realpath3, rm, stat as stat10 } from "fs/promises";
 import { homedir as homedir2 } from "os";
-import { basename as basename4, join as join9, relative as relative4 } from "path";
+import { basename as basename5, join as join11, relative as relative4 } from "path";
 import { promisify as promisify5 } from "util";
 
 // node_modules/hono/dist/compose.js
@@ -7282,9 +7282,9 @@ function forceKillRemainingDevServers() {
   }
 }
 
-// server/files.ts
-import { stat as stat3, writeFile } from "fs/promises";
-import { basename, resolve } from "path";
+// server/deps.ts
+import { readFile as readFile2 } from "fs/promises";
+import { basename, join as join3 } from "path";
 
 // server/util.ts
 import { stat as stat2 } from "fs/promises";
@@ -7347,7 +7347,313 @@ async function fetchWithTimeout(url, ms, init) {
   }
 }
 
+// server/deps.ts
+var REGISTRY_TIMEOUT_MS = 8000;
+var REGISTRY_CONCURRENCY = 8;
+var CACHE_TTL_MS = 60 * 60 * 1000;
+var MAX_PROJECTS = 100;
+var latestCache = new Map;
+function isSkippableRange(range) {
+  return range.startsWith("workspace:") || range.startsWith("catalog:") || range.startsWith("file:") || range.startsWith("link:") || range.startsWith("git") || range.startsWith("http") || range.startsWith("npm:");
+}
+function parseVersion(text) {
+  const match2 = text.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!match2)
+    return null;
+  return [Number(match2[1]), Number(match2[2]), Number(match2[3])];
+}
+function diffLevel(range, latest) {
+  if (!latest)
+    return "unknown";
+  const current = parseVersion(range);
+  const next = parseVersion(latest);
+  if (!current || !next)
+    return "unknown";
+  if (next[0] > current[0])
+    return "major";
+  if (next[0] === current[0] && next[1] > current[1])
+    return "minor";
+  if (next[0] === current[0] && next[1] === current[1] && next[2] > current[2])
+    return "patch";
+  return "none";
+}
+async function fetchLatest(name) {
+  const cached = latestCache.get(name);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS)
+    return cached.latest;
+  let latest = null;
+  try {
+    const res = await fetchWithTimeout(`https://registry.npmjs.org/${encodeURIComponent(name).replace("%40", "@")}`, REGISTRY_TIMEOUT_MS, { headers: { accept: "application/vnd.npm.install-v1+json" } });
+    if (res.ok) {
+      const body = await res.json();
+      latest = body["dist-tags"]?.latest ?? null;
+    }
+  } catch {
+    latest = null;
+  }
+  latestCache.set(name, { latest, at: Date.now() });
+  return latest;
+}
+async function readPackageJson(repoPath) {
+  try {
+    const content = await readFile2(join3(repoPath, "package.json"), "utf8");
+    const parsed = JSON.parse(content);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+async function auditProjects(paths) {
+  if (paths.length === 0) {
+    return { ok: false, status: 400, error: "No project paths given." };
+  }
+  if (paths.length > MAX_PROJECTS) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Too many projects \u2014 limit is ${MAX_PROJECTS}.`
+    };
+  }
+  const pending = [];
+  for (const path of paths) {
+    const pkg = await readPackageJson(path);
+    if (!pkg) {
+      pending.push({
+        path,
+        name: basename(path),
+        error: "No readable package.json",
+        deps: []
+      });
+      continue;
+    }
+    const deps = [
+      ...Object.entries(pkg.dependencies ?? {}).map(([name, range]) => ({
+        name,
+        range,
+        dev: false
+      })),
+      ...Object.entries(pkg.devDependencies ?? {}).map(([name, range]) => ({
+        name,
+        range,
+        dev: true
+      }))
+    ];
+    pending.push({ path, name: pkg.name ?? basename(path), error: null, deps });
+  }
+  const uniqueNames = [
+    ...new Set(pending.flatMap((project) => project.deps.filter((dep) => !isSkippableRange(dep.range)).map((dep) => dep.name)))
+  ];
+  const latestByName = new Map;
+  await mapLimit(uniqueNames, REGISTRY_CONCURRENCY, async (name) => {
+    latestByName.set(name, await fetchLatest(name));
+  });
+  const projects = pending.map((project) => {
+    const packages = project.deps.map((dep) => {
+      const latest = isSkippableRange(dep.range) ? null : latestByName.get(dep.name) ?? null;
+      return {
+        name: dep.name,
+        range: dep.range,
+        latest,
+        diff: isSkippableRange(dep.range) ? "unknown" : diffLevel(dep.range, latest),
+        dev: dep.dev
+      };
+    });
+    const outdated = packages.filter((entry) => entry.diff === "major" || entry.diff === "minor" || entry.diff === "patch").length;
+    const major = packages.filter((entry) => entry.diff === "major").length;
+    return {
+      path: project.path,
+      name: project.name,
+      error: project.error,
+      packages,
+      counts: { total: packages.length, outdated, major }
+    };
+  });
+  return { ok: true, data: { projects } };
+}
+
+// server/dns.ts
+var DNS_TIMEOUT_MS = 6000;
+var DNS_RECORD_TYPES = [
+  "A",
+  "AAAA",
+  "CNAME",
+  "MX",
+  "TXT",
+  "NS",
+  "SOA",
+  "CAA"
+];
+var TYPE_NUMBERS = {
+  1: "A",
+  2: "NS",
+  5: "CNAME",
+  6: "SOA",
+  15: "MX",
+  16: "TXT",
+  28: "AAAA",
+  257: "CAA"
+};
+function normalizeDomain(input) {
+  const trimmed = input.trim().toLowerCase();
+  if (!trimmed)
+    return null;
+  try {
+    const url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+    const host = url.hostname;
+    if (!/^[a-z0-9.-]+\.[a-z0-9-]{2,}$/.test(host))
+      return null;
+    return host;
+  } catch {
+    return null;
+  }
+}
+async function queryDoh(resolver, domain, type) {
+  const url = resolver === "cloudflare" ? `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=${type}` : `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${type}`;
+  const res = await fetchWithTimeout(url, DNS_TIMEOUT_MS, {
+    headers: { accept: "application/dns-json" }
+  });
+  if (!res.ok)
+    throw new Error(`Resolver answered HTTP ${res.status}`);
+  const body = await res.json();
+  if (body.Status !== 0 && body.Status !== 3) {
+    throw new Error(`DNS status ${body.Status}`);
+  }
+  return (body.Answer ?? []).map((answer) => ({
+    name: answer.name.replace(/\.$/, ""),
+    type: TYPE_NUMBERS[answer.type] ?? String(answer.type),
+    ttl: answer.TTL,
+    data: answer.data.replace(/^"|"$/g, "")
+  }));
+}
+async function queryResolver(resolver, domain, type) {
+  const types = type === "ANY" ? [...DNS_RECORD_TYPES] : [type];
+  try {
+    const batches = await Promise.all(types.map((entry) => queryDoh(resolver, domain, entry)));
+    const records = batches.flat();
+    const seen = new Set;
+    const unique = records.filter((record) => {
+      const key = `${record.type}|${record.name}|${record.data}`;
+      if (seen.has(key))
+        return false;
+      seen.add(key);
+      return true;
+    });
+    return { resolver, records: unique, error: null };
+  } catch (cause) {
+    return {
+      resolver,
+      records: [],
+      error: cause instanceof Error ? cause.message : "Lookup failed"
+    };
+  }
+}
+async function lookupDns(domainInput, typeInput) {
+  const domain = normalizeDomain(domainInput ?? "");
+  if (!domain) {
+    return { ok: false, status: 400, error: "Enter a valid domain name." };
+  }
+  const type = typeInput && [...DNS_RECORD_TYPES, "ANY"].includes(typeInput) ? typeInput : "A";
+  const results = await Promise.all([
+    queryResolver("cloudflare", domain, type),
+    queryResolver("google", domain, type)
+  ]);
+  return { ok: true, data: { domain, type, results } };
+}
+
+// server/env-files.ts
+import { readFile as readFile3, readdir, stat as stat3 } from "fs/promises";
+import { join as join4 } from "path";
+var MAX_ENV_BYTES = 1024 * 1024;
+var ENV_NAME_PATTERN = /^\.env(?:\.[\w.-]+)?$/;
+function parseEnvContent(content) {
+  const entries = [];
+  let parseErrors = 0;
+  const lines = content.split(/\r?\n/);
+  for (let index = 0;index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (!line || line.startsWith("#"))
+      continue;
+    const match2 = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$/);
+    if (!match2) {
+      parseErrors += 1;
+      continue;
+    }
+    let value = match2[2].trim();
+    if (value.startsWith('"') && value.endsWith('"') && value.length >= 2 || value.startsWith("'") && value.endsWith("'") && value.length >= 2) {
+      value = value.slice(1, -1);
+    } else {
+      const hash = value.indexOf(" #");
+      if (hash >= 0)
+        value = value.slice(0, hash).trim();
+    }
+    entries.push({ key: match2[1], value, line: index + 1 });
+  }
+  return { entries, parseErrors };
+}
+async function readEnvFile(repoPath, name) {
+  const filePath = join4(repoPath, name);
+  const info = await stat3(filePath);
+  if (!info.isFile())
+    throw new Error(`${name} is not a file`);
+  if (info.size > MAX_ENV_BYTES)
+    throw new Error(`${name} is too large`);
+  return readFile3(filePath, "utf8");
+}
+async function listEnvFiles(repoPath) {
+  let names;
+  try {
+    const entries = await readdir(repoPath, { withFileTypes: true });
+    names = entries.filter((entry) => entry.isFile() && ENV_NAME_PATTERN.test(entry.name)).map((entry) => entry.name).sort();
+  } catch (cause) {
+    return {
+      ok: false,
+      status: 500,
+      error: cause instanceof Error ? cause.message : "Could not read directory"
+    };
+  }
+  const files = [];
+  for (const name of names) {
+    try {
+      const content = await readEnvFile(repoPath, name);
+      const { entries, parseErrors } = parseEnvContent(content);
+      files.push({
+        name,
+        parseErrors,
+        keys: entries.map((entry) => ({
+          key: entry.key,
+          hasValue: entry.value.length > 0,
+          line: entry.line
+        }))
+      });
+    } catch {
+      files.push({ name, keys: [], parseErrors: 1 });
+    }
+  }
+  return { ok: true, data: { files } };
+}
+async function readEnvValues(repoPath, fileName) {
+  if (typeof fileName !== "string" || !ENV_NAME_PATTERN.test(fileName)) {
+    return { ok: false, status: 400, error: "Invalid env file name" };
+  }
+  try {
+    const content = await readEnvFile(repoPath, fileName);
+    const { entries } = parseEnvContent(content);
+    const values = {};
+    for (const entry of entries)
+      values[entry.key] = entry.value;
+    return { ok: true, data: { values } };
+  } catch (cause) {
+    return {
+      ok: false,
+      status: 400,
+      error: cause instanceof Error ? cause.message : "Could not read file"
+    };
+  }
+}
+
 // server/files.ts
+import { stat as stat4, writeFile } from "fs/promises";
+import { basename as basename2, resolve } from "path";
 var MAX_WRITE_BYTES = 64 * 1024 * 1024;
 function decodeBase64(dataBase64) {
   try {
@@ -7367,7 +7673,7 @@ function sanitizeSuffix(suffix) {
 async function writeDerivedFile(input) {
   const originalPath = resolve(input.originalPath);
   try {
-    const st = await stat3(originalPath);
+    const st = await stat4(originalPath);
     if (!st.isFile()) {
       return { ok: false, status: 400, error: "Original path is not a file" };
     }
@@ -7401,7 +7707,7 @@ async function writeDerivedFile(input) {
 async function writeBatchFiles(input) {
   const dirPath = resolve(input.dirPath);
   try {
-    const st = await stat3(dirPath);
+    const st = await stat4(dirPath);
     if (!st.isDirectory()) {
       return { ok: false, status: 400, error: "Target path is not a directory" };
     }
@@ -7416,7 +7722,7 @@ async function writeBatchFiles(input) {
   }
   const written = [];
   for (const file of input.files) {
-    const name = basename(file.name).trim();
+    const name = basename2(file.name).trim();
     if (!name || name.startsWith(".") || name.includes("/") || name.includes("\\")) {
       return { ok: false, status: 400, error: `Invalid file name: ${file.name}` };
     }
@@ -7437,6 +7743,107 @@ async function writeBatchFiles(input) {
     }
   }
   return { ok: true, written };
+}
+
+// server/ssl.ts
+import { connect } from "tls";
+var SSL_TIMEOUT_MS = 6000;
+var MAX_DOMAINS = 20;
+var CONCURRENCY = 4;
+function certificateName(cert) {
+  return cert.subject?.CN ?? cert.subject?.O ?? Object.values(cert.subject ?? {})[0] ?? "unknown";
+}
+function inspectSocket(domain, socket) {
+  const cert = socket.getPeerCertificate(true);
+  if (!cert || Object.keys(cert).length === 0) {
+    return emptyResult(domain, "No certificate presented");
+  }
+  const validTo = new Date(cert.valid_to);
+  const daysLeft = Math.floor((validTo.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+  const altNames = (cert.subjectaltname ?? "").split(",").map((entry) => entry.trim().replace(/^DNS:/, "")).filter(Boolean);
+  const chain = [];
+  let current = cert;
+  while (current && chain.length < 6) {
+    chain.push(certificateName(current));
+    const issuer = current.issuerCertificate;
+    if (!issuer || issuer === current)
+      break;
+    current = issuer;
+  }
+  const selfSigned = chain.length === 1 && JSON.stringify(cert.subject) === JSON.stringify(cert.issuer);
+  return {
+    domain,
+    ok: socket.authorized && daysLeft > 0,
+    error: socket.authorized ? daysLeft <= 0 ? "Certificate expired" : null : socket.authorizationError?.toString() ?? "Not authorized",
+    subject: cert.subject?.CN ?? null,
+    issuer: cert.issuer?.O ?? cert.issuer?.CN ?? null,
+    validFrom: new Date(cert.valid_from).toISOString(),
+    validTo: validTo.toISOString(),
+    daysLeft,
+    altNames,
+    chain,
+    protocol: socket.getProtocol(),
+    selfSigned
+  };
+}
+function emptyResult(domain, error) {
+  return {
+    domain,
+    ok: false,
+    error,
+    subject: null,
+    issuer: null,
+    validFrom: null,
+    validTo: null,
+    daysLeft: null,
+    altNames: [],
+    chain: [],
+    protocol: null,
+    selfSigned: false
+  };
+}
+function checkDomain(domain) {
+  return new Promise((resolve2) => {
+    let settled = false;
+    const finish = (result) => {
+      if (settled)
+        return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      resolve2(result);
+    };
+    const timer = setTimeout(() => finish(emptyResult(domain, "Connection timed out")), SSL_TIMEOUT_MS);
+    const socket = connect({
+      host: domain,
+      port: 443,
+      servername: domain,
+      rejectUnauthorized: false,
+      timeout: SSL_TIMEOUT_MS
+    }, () => finish(inspectSocket(domain, socket)));
+    socket.on("error", (cause) => finish(emptyResult(domain, cause.message)));
+    socket.on("timeout", () => finish(emptyResult(domain, "Connection timed out")));
+  });
+}
+async function checkSslDomains(input) {
+  if (!Array.isArray(input)) {
+    return { ok: false, status: 400, error: "Expected a list of domains." };
+  }
+  const domains = [
+    ...new Set(input.filter((entry) => typeof entry === "string").map((entry) => normalizeDomain(entry)).filter((entry) => entry !== null))
+  ];
+  if (domains.length === 0) {
+    return { ok: false, status: 400, error: "Enter at least one valid domain." };
+  }
+  if (domains.length > MAX_DOMAINS) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Too many domains \u2014 limit is ${MAX_DOMAINS} per check.`
+    };
+  }
+  const results = await mapLimit(domains, CONCURRENCY, checkDomain);
+  return { ok: true, data: { results } };
 }
 
 // node_modules/cheerio/dist/esm/options.js
@@ -21359,8 +21766,8 @@ async function fetchSeoAudit(target) {
 }
 
 // server/open-path.ts
-import { realpath, stat as stat4 } from "fs/promises";
-import { basename as basename2, relative, resolve as resolve2 } from "path";
+import { realpath, stat as stat5 } from "fs/promises";
+import { basename as basename3, relative, resolve as resolve2 } from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 var execFileAsync = promisify(execFile);
@@ -21395,7 +21802,7 @@ async function resolveUnderAllowedRoots(pathStr, allowedRoots, kind) {
   if (!insideAllowedRoot) {
     throw new Error("Path is outside the configured scan roots");
   }
-  const st = await stat4(targetReal);
+  const st = await stat5(targetReal);
   if (kind === "directory" && !st.isDirectory()) {
     throw new Error("Path is not a directory");
   }
@@ -21431,7 +21838,7 @@ async function openLocalPath(dir, target) {
     return;
   }
   if (target === "browser") {
-    const host = basename2(dir).trim().toLowerCase();
+    const host = basename3(dir).trim().toLowerCase();
     if (!host) {
       throw new Error("Could not derive host name from directory path");
     }
@@ -21546,11 +21953,11 @@ async function killPortProcess(pid, port) {
 }
 
 // server/prefs.ts
-import { mkdir, readFile as readFile2, writeFile as writeFile2 } from "fs/promises";
+import { mkdir, readFile as readFile4, writeFile as writeFile2 } from "fs/promises";
 import { homedir } from "os";
-import { dirname, join as join3 } from "path";
-var CONFIG_DIR = join3(homedir(), ".config", "orbit");
-var CONFIG_PATH = join3(CONFIG_DIR, "config.json");
+import { dirname, join as join5 } from "path";
+var CONFIG_DIR = join5(homedir(), ".config", "orbit");
+var CONFIG_PATH = join5(CONFIG_DIR, "config.json");
 var defaultPreferences = () => ({
   pinnedPaths: [],
   recent: [],
@@ -21599,7 +22006,7 @@ function parseAppSettings(input) {
 }
 async function readPreferences() {
   try {
-    const raw2 = await readFile2(CONFIG_PATH, "utf8");
+    const raw2 = await readFile4(CONFIG_PATH, "utf8");
     const parsed = JSON.parse(raw2);
     return {
       ...defaultPreferences(),
@@ -21625,14 +22032,14 @@ async function writePreferences(prefs) {
 }
 
 // server/readme.ts
-import { readdir, readFile as readFile3, realpath as realpath2, stat as stat5 } from "fs/promises";
-import { join as join4, relative as relative2 } from "path";
+import { readdir as readdir2, readFile as readFile5, realpath as realpath2, stat as stat6 } from "fs/promises";
+import { join as join6, relative as relative2 } from "path";
 var README_NAMES = ["readme.md", "readme.markdown", "readme"];
 var MAX_README_BYTES = 500 * 1024;
 async function readRepoReadme(repoDir) {
   let entries;
   try {
-    entries = await readdir(repoDir);
+    entries = await readdir2(repoDir);
   } catch {
     return { ok: false, status: 500, error: "Could not read project directory" };
   }
@@ -21640,7 +22047,7 @@ async function readRepoReadme(repoDir) {
   if (!fileName) {
     return { ok: false, status: 404, error: "No README found" };
   }
-  const readmePath = join4(repoDir, fileName);
+  const readmePath = join6(repoDir, fileName);
   let realFile;
   try {
     realFile = await realpath2(readmePath);
@@ -21652,12 +22059,12 @@ async function readRepoReadme(repoDir) {
     return { ok: false, status: 400, error: "README resolves outside the repository" };
   }
   try {
-    const st = await stat5(realFile);
+    const st = await stat6(realFile);
     if (!st.isFile()) {
       return { ok: false, status: 404, error: "No README found" };
     }
     const truncated = st.size > MAX_README_BYTES;
-    let content = await readFile3(realFile, "utf8");
+    let content = await readFile5(realFile, "utf8");
     if (truncated) {
       content = content.slice(0, MAX_README_BYTES);
     }
@@ -22056,8 +22463,8 @@ async function validateRobots(target) {
 
 // server/scan.ts
 import { execFile as execFile4 } from "child_process";
-import { readdir as readdir2, stat as stat6 } from "fs/promises";
-import { join as join6 } from "path";
+import { readdir as readdir3, stat as stat7 } from "fs/promises";
+import { join as join8 } from "path";
 import { promisify as promisify4 } from "util";
 
 // server/git.ts
@@ -22180,13 +22587,13 @@ async function getGitMeta(repoPath) {
 }
 
 // server/stack.ts
-import { readFile as readFile4 } from "fs/promises";
-import { join as join5 } from "path";
+import { readFile as readFile6 } from "fs/promises";
+import { join as join7 } from "path";
 async function detectStack(repoPath) {
   const tags = new Set;
   const tryRead = async (name) => {
     try {
-      return await readFile4(join5(repoPath, name), "utf8");
+      return await readFile6(join7(repoPath, name), "utf8");
     } catch {
       return null;
     }
@@ -22269,7 +22676,7 @@ async function getDirectorySizeBytes(path) {
 async function getRepoDiskMetrics(topLevelPath) {
   let lastFsMtimeIso = null;
   try {
-    const st = await stat6(topLevelPath);
+    const st = await stat7(topLevelPath);
     lastFsMtimeIso = st.mtime.toISOString();
   } catch {
     lastFsMtimeIso = null;
@@ -22277,8 +22684,8 @@ async function getRepoDiskMetrics(topLevelPath) {
   const workingTreeBytes = await getDirectorySizeBytes(topLevelPath);
   let nodeModulesBytes = null;
   try {
-    const nodeModulesPath = join6(topLevelPath, "node_modules");
-    const st = await stat6(nodeModulesPath);
+    const nodeModulesPath = join8(topLevelPath, "node_modules");
+    const st = await stat7(nodeModulesPath);
     if (st.isDirectory()) {
       nodeModulesBytes = await getDirectorySizeBytes(nodeModulesPath);
     }
@@ -22292,7 +22699,7 @@ async function collectGitRoots(dir, depth, acc) {
     return;
   let entries;
   try {
-    entries = await readdir2(dir, { withFileTypes: true });
+    entries = await readdir3(dir, { withFileTypes: true });
   } catch {
     return;
   }
@@ -22311,7 +22718,7 @@ async function collectGitRoots(dir, depth, acc) {
       continue;
     if (SKIP_DIR_NAMES.has(ent.name))
       continue;
-    await collectGitRoots(join6(dir, ent.name), depth + 1, acc);
+    await collectGitRoots(join8(dir, ent.name), depth + 1, acc);
   }
 }
 function poolMap(items, limit, fn) {
@@ -22344,7 +22751,7 @@ function poolMap(items, limit, fn) {
 async function scanRepos(scanRoot, orbitLibraryId = "primary") {
   const roots = [];
   try {
-    const st = await stat6(scanRoot);
+    const st = await stat7(scanRoot);
     if (!st.isDirectory()) {
       return [];
     }
@@ -22400,8 +22807,8 @@ async function scanRepos(scanRoot, orbitLibraryId = "primary") {
 }
 
 // server/search.ts
-import { readdir as readdir3, readFile as readFile5, stat as stat7 } from "fs/promises";
-import { basename as basename3, join as join7, relative as relative3 } from "path";
+import { readdir as readdir4, readFile as readFile7, stat as stat8 } from "fs/promises";
+import { basename as basename4, join as join9, relative as relative3 } from "path";
 var MAX_FILE_BYTES = 1024 * 1024;
 var MAX_TOTAL_MATCHES = 500;
 var MAX_MATCHES_PER_FILE = 20;
@@ -22435,7 +22842,7 @@ async function collectFiles(dir, depth, acc, deadline) {
     return;
   let entries;
   try {
-    entries = await readdir3(dir, { withFileTypes: true });
+    entries = await readdir4(dir, { withFileTypes: true });
   } catch {
     return;
   }
@@ -22443,9 +22850,9 @@ async function collectFiles(dir, depth, acc, deadline) {
     if (entry.isDirectory()) {
       if (SKIP_DIR_NAMES.has(entry.name))
         continue;
-      await collectFiles(join7(dir, entry.name), depth + 1, acc, deadline);
+      await collectFiles(join9(dir, entry.name), depth + 1, acc, deadline);
     } else if (entry.isFile() && !shouldSkipFile(entry.name)) {
-      acc.push(join7(dir, entry.name));
+      acc.push(join9(dir, entry.name));
     }
   }
 }
@@ -22488,6 +22895,22 @@ function buildMatcher(query, regex, caseSensitive) {
     return index2 >= 0 ? { index: index2 } : null;
   };
 }
+function normalizeExtensions(extensions) {
+  const normalized = new Set;
+  for (const raw2 of extensions ?? []) {
+    const ext = raw2.trim().toLowerCase().replace(/^\*?\.*/, "");
+    if (ext.length > 0)
+      normalized.add(ext);
+  }
+  return normalized;
+}
+function fileExtension(filePath) {
+  const name = basename4(filePath);
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0)
+    return null;
+  return name.slice(dot + 1).toLowerCase();
+}
 async function runContentSearch(input) {
   const query = input.query;
   if (typeof query !== "string" || query.trim().length < 3) {
@@ -22501,12 +22924,13 @@ async function runContentSearch(input) {
   if (typeof matcher !== "function") {
     return { ok: false, status: 400, error: matcher.error };
   }
+  const extensionFilter = normalizeExtensions(input.extensions);
   const startedAt = Date.now();
   const deadline = startedAt + WALL_CLOCK_BUDGET_MS;
   const repoRoots = [];
   for (const root2 of input.roots) {
     try {
-      const st = await stat7(root2);
+      const st = await stat8(root2);
       if (!st.isDirectory())
         continue;
     } catch {
@@ -22526,8 +22950,12 @@ async function runContentSearch(input) {
       state.truncated = true;
       break;
     }
-    const files = [];
-    await collectFiles(repoRoot, 0, files, deadline);
+    const allFiles = [];
+    await collectFiles(repoRoot, 0, allFiles, deadline);
+    const files = extensionFilter.size > 0 ? allFiles.filter((filePath) => {
+      const ext = fileExtension(filePath);
+      return ext !== null && extensionFilter.has(ext);
+    }) : allFiles;
     const fileResults = await mapLimit(files, READ_CONCURRENCY, async (filePath) => {
       if (state.totalMatches >= MAX_TOTAL_MATCHES || Date.now() > deadline) {
         state.truncated = true;
@@ -22535,10 +22963,10 @@ async function runContentSearch(input) {
       }
       let bytes;
       try {
-        const st = await stat7(filePath);
+        const st = await stat8(filePath);
         if (!st.isFile() || st.size > MAX_FILE_BYTES)
           return null;
-        bytes = await readFile5(filePath);
+        bytes = await readFile7(filePath);
       } catch {
         return null;
       }
@@ -22574,7 +23002,7 @@ async function runContentSearch(input) {
       nonEmpty.sort((a, b) => a.relPath.localeCompare(b.relPath));
       results.push({
         repoPath: repoRoot,
-        repoName: basename3(repoRoot),
+        repoName: basename4(repoRoot),
         files: nonEmpty
       });
     }
@@ -23805,8 +24233,8 @@ async function runSchemaViewerValidation(input) {
 }
 
 // server/tinify.ts
-import { readFile as readFile6, rename, stat as stat8, writeFile as writeFile3 } from "fs/promises";
-import { dirname as dirname2, extname, join as join8, parse as parse7, resolve as resolve3 } from "path";
+import { readFile as readFile8, rename, stat as stat9, writeFile as writeFile3 } from "fs/promises";
+import { dirname as dirname2, extname, join as join10, parse as parse7, resolve as resolve3 } from "path";
 var TINIFY_SHRINK_URL = "https://api.tinify.com/shrink";
 var ALLOWED_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"]);
 var MAX_CONCURRENCY = 3;
@@ -23836,7 +24264,7 @@ async function writeOutputFile(outputBytes, originalPath, replaceOriginal) {
     await writeFile3(outputPath, outputBytes);
     return outputPath;
   }
-  const tempPath = join8(dirname2(originalPath), `.${parse7(originalPath).name}.tinify-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}${parse7(originalPath).ext}`);
+  const tempPath = join10(dirname2(originalPath), `.${parse7(originalPath).name}.tinify-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}${parse7(originalPath).ext}`);
   await writeFile3(tempPath, outputBytes);
   await rename(tempPath, originalPath);
   return originalPath;
@@ -23848,11 +24276,11 @@ async function tinifySinglePath(apiKey, path, replaceOriginal) {
     if (!ALLOWED_EXTENSIONS.has(extension)) {
       return { path, error: "Only PNG and JPG images are supported." };
     }
-    const fileStats = await stat8(resolvedPath);
+    const fileStats = await stat9(resolvedPath);
     if (!fileStats.isFile()) {
       return { path, error: "Path is not a file." };
     }
-    const inputBytes = await readFile6(resolvedPath);
+    const inputBytes = await readFile8(resolvedPath);
     const shrinkResponse = await fetch(TINIFY_SHRINK_URL, {
       method: "POST",
       headers: {
@@ -23949,13 +24377,13 @@ var PORT = (() => {
   return Number.isFinite(n) && n > 0 ? n : 8788;
 })();
 function defaultScanRoot() {
-  return process.env.ORBIT_SCAN_ROOT ?? join9(homedir2(), "Sites");
+  return process.env.ORBIT_SCAN_ROOT ?? join11(homedir2(), "Sites");
 }
 function expandHomePath(pathValue) {
   if (pathValue === "~")
     return homedir2();
   if (pathValue.startsWith("~/")) {
-    return join9(homedir2(), pathValue.slice(2));
+    return join11(homedir2(), pathValue.slice(2));
   }
   return pathValue;
 }
@@ -24054,7 +24482,7 @@ app.post("/api/scan", async (c) => {
   const libraryId = selectedLibrary?.id ?? fromLibraryId ?? "primary";
   const scannedAt = new Date().toISOString();
   try {
-    const st = await stat9(scanRoot);
+    const st = await stat10(scanRoot);
     if (!st.isDirectory()) {
       return c.json({
         error: `Scan root is not a directory: ${scanRoot}`,
@@ -24213,7 +24641,7 @@ app.post("/api/repo/delete-node-modules", async (c) => {
     const message = e instanceof Error ? e.message : String(e);
     return c.json({ error: message }, 400);
   }
-  const nodeModulesPath = join9(safeRepo, "node_modules");
+  const nodeModulesPath = join11(safeRepo, "node_modules");
   let resolvedNm;
   try {
     resolvedNm = await realpath3(nodeModulesPath);
@@ -24224,11 +24652,11 @@ app.post("/api/repo/delete-node-modules", async (c) => {
   if (rel.startsWith("..") || rel === "..") {
     return c.json({ error: "node_modules resolves outside the repository" }, 400);
   }
-  if (basename4(resolvedNm) !== "node_modules") {
+  if (basename5(resolvedNm) !== "node_modules") {
     return c.json({ error: "Not a node_modules directory" }, 400);
   }
   try {
-    const st = await stat9(resolvedNm);
+    const st = await stat10(resolvedNm);
     if (!st.isDirectory()) {
       return c.json({ error: "node_modules is not a directory" }, 400);
     }
@@ -24392,6 +24820,76 @@ app.post("/api/files/write-batch", async (c) => {
   }
   return c.json({ written: result.written });
 });
+app.get("/api/env/files", async (c) => {
+  const pathStr = c.req.query("path");
+  if (!pathStr)
+    return c.json({ error: "Missing path" }, 400);
+  let safePath;
+  try {
+    safePath = await resolvePathUnderAllowedRoots(pathStr, await getAllowedRoots());
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+  const result = await listEnvFiles(safePath);
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status);
+  }
+  return c.json(result.data);
+});
+app.post("/api/env/values", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const pathStr = body && typeof body === "object" && typeof body.path === "string" ? body.path : null;
+  if (!pathStr)
+    return c.json({ error: "Missing path" }, 400);
+  let safePath;
+  try {
+    safePath = await resolvePathUnderAllowedRoots(pathStr, await getAllowedRoots());
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+  const result = await readEnvValues(safePath, body.file);
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status);
+  }
+  return c.json(result.data);
+});
+app.post("/api/deps/audit", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const rawPaths = body && typeof body === "object" ? body.paths : null;
+  if (!Array.isArray(rawPaths)) {
+    return c.json({ error: "Expected a list of project paths" }, 400);
+  }
+  const allowedRoots = await getAllowedRoots();
+  const safePaths = [];
+  for (const entry of rawPaths) {
+    if (typeof entry !== "string")
+      continue;
+    try {
+      safePaths.push(await resolvePathUnderAllowedRoots(entry, allowedRoots));
+    } catch {}
+  }
+  const result = await auditProjects(safePaths);
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status);
+  }
+  return c.json(result.data);
+});
+app.get("/api/dns", async (c) => {
+  const result = await lookupDns(c.req.query("domain"), c.req.query("type"));
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status);
+  }
+  return c.json(result.data);
+});
+app.post("/api/ssl/check", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const domains = body && typeof body === "object" ? body.domains : null;
+  const result = await checkSslDomains(domains);
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status);
+  }
+  return c.json(result.data);
+});
 app.get("/api/redirects", async (c) => {
   const result = await inspectRedirects(c.req.query("url"));
   if (!result.ok) {
@@ -24419,11 +24917,19 @@ app.post("/api/search", async (c) => {
   const query = typeof body.query === "string" ? body.query : "";
   const regex = body.regex === true;
   const caseSensitive = body.caseSensitive === true;
+  const rawExtensions = body.extensions;
+  const extensions = Array.isArray(rawExtensions) ? rawExtensions.filter((entry) => typeof entry === "string") : [];
   const libraryId = typeof body.libraryId === "string" ? body.libraryId : null;
   const prefs = await readPreferences();
   const libraries = getConfiguredLibraries(prefs.scanRoot, prefs.primaryScanRootLabel, prefs.additionalScanRoots);
   const roots = (libraryId ? libraries.filter((library) => library.id === libraryId) : libraries).map((library) => library.path);
-  const result = await runContentSearch({ query, regex, caseSensitive, roots });
+  const result = await runContentSearch({
+    query,
+    regex,
+    caseSensitive,
+    extensions,
+    roots
+  });
   if (!result.ok) {
     return c.json({ error: result.error }, result.status);
   }

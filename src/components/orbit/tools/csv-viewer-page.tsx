@@ -97,7 +97,6 @@ export function CsvViewerPage() {
       const options = {
         delimiter: config?.value ?? "",
         skipEmptyLines: "greedy" as const,
-        worker: typeof source !== "string",
         complete: (results: Papa.ParseResult<string[]>) => {
           setBusy(false)
           setParsed({
@@ -116,7 +115,7 @@ export function CsvViewerPage() {
         },
       }
       if (typeof source === "string") Papa.parse<string[]>(source, options)
-      else Papa.parse<string[]>(source, options)
+      else Papa.parse<string[]>(source, { ...options, worker: true })
     },
     [],
   )

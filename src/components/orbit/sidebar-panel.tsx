@@ -1,10 +1,11 @@
 import { Activity, ChevronDown, ChevronRight, Folder, Pin, Search, Settings, Wrench } from "lucide-react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
-import { memo, startTransition, useRef, useState } from "react"
+import { memo, startTransition, useMemo, useState } from "react"
 
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { ThemeToggle } from "@/components/orbit/theme-toggle"
-import { TOOLS } from "@/components/orbit/tools/tool-registry"
+import { TOOLS, type ToolMeta } from "@/components/orbit/tools/tool-registry"
+import { useToolLists } from "@/hooks/use-tool-pins"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import type { OpenTarget } from "@/lib/api"
@@ -86,9 +87,11 @@ type SubNavItemProps = {
   label: string
   active: boolean
   onClick: () => void
+  icon?: React.ComponentType<{ className?: string }>
+  trailing?: React.ReactNode
 }
 
-function SubNavItem({ label, active, onClick }: SubNavItemProps) {
+function SubNavItem({ label, active, onClick, icon: Icon, trailing }: SubNavItemProps) {
   return (
     <button
       type="button"
@@ -101,34 +104,50 @@ function SubNavItem({ label, active, onClick }: SubNavItemProps) {
           : "text-muted-foreground hover:text-foreground",
       )}
     >
-      <span className="truncate">{label}</span>
+      {Icon ? (
+        <Icon
+          className={cn(
+            "size-3 shrink-0",
+            active ? "text-highlight" : "text-muted-foreground/60",
+          )}
+          aria-hidden
+        />
+      ) : null}
+      <span className="flex-1 truncate">{label}</span>
+      {trailing}
     </button>
   )
 }
 
-/** `h-8` sub-rows; center of row i from top of rail (px). */
+/** `h-8` sub-rows and `h-6` section labels; heights feed the indicator math. */
 const TOOLS_SUB_NAV_ROW_PX = 32
+const TOOLS_SUB_NAV_LABEL_PX = 24
 const TOOLS_SUB_NAV_ROW_CENTER_PX = TOOLS_SUB_NAV_ROW_PX / 2
+
+/** Rows rendered inside the tools sub-nav rail. */
+type ToolRailRow =
+  | { kind: "label"; text: string }
+  | { kind: "tool"; tool: ToolMeta; pinned: boolean }
+  | { kind: "all" }
 
 /**
  * Wraps a list of SubNavItems in a vertical rail aligned to the parent
- * NavItem icon column.
+ * NavItem icon column. `indicatorTop` is the active row's center in px
+ * from the top of the rail, or null when no row is active.
  */
 function SubNavRail({
   children,
-  activeIndex,
+  indicatorTop: activeTop,
 }: {
   children: React.ReactNode
-  activeIndex: number
+  indicatorTop: number | null
 }) {
-  const lastActiveIndexRef = useRef(0)
-  if (activeIndex >= 0) {
-    lastActiveIndexRef.current = activeIndex
+  const [lastTop, setLastTop] = useState(TOOLS_SUB_NAV_ROW_CENTER_PX)
+  if (activeTop != null && activeTop !== lastTop) {
+    setLastTop(activeTop)
   }
-  const layoutIndex =
-    activeIndex >= 0 ? activeIndex : lastActiveIndexRef.current
-  const indicatorTop = TOOLS_SUB_NAV_ROW_CENTER_PX + layoutIndex * TOOLS_SUB_NAV_ROW_PX
-  const indicatorVisible = activeIndex >= 0
+  const indicatorTop = activeTop ?? lastTop
+  const indicatorVisible = activeTop != null
 
   return (
     <div className="relative pb-1">
@@ -182,9 +201,44 @@ export const SidebarPanel = memo(function SidebarPanel({
   const [manualToolsExpanded, setManualToolsExpanded] = useState(false)
   const toolsExpanded = toolsActive || manualToolsExpanded
   const isToolsHub = pathname === "/tools" || pathname === "/tools/"
-  const toolsSubNavActiveIndex = TOOLS.findIndex(
-    (tool) => pathname === tool.path,
-  )
+
+  const { pinned: pinnedToolIds, recent: recentToolIds } = useToolLists()
+  const toolRailRows = useMemo<ToolRailRow[]>(() => {
+    const byId = new Map(TOOLS.map((tool) => [tool.id, tool]))
+    const pinnedTools = pinnedToolIds
+      .map((id) => byId.get(id))
+      .filter((tool): tool is ToolMeta => Boolean(tool))
+    const recentTools = recentToolIds
+      .filter((id) => !pinnedToolIds.includes(id))
+      .map((id) => byId.get(id))
+      .filter((tool): tool is ToolMeta => Boolean(tool))
+      .slice(0, 4)
+
+    const rows: ToolRailRow[] = []
+    if (pinnedTools.length > 0) {
+      rows.push({ kind: "label", text: "Pinned" })
+      for (const tool of pinnedTools) rows.push({ kind: "tool", tool, pinned: true })
+    }
+    if (recentTools.length > 0) {
+      rows.push({ kind: "label", text: "Recent" })
+      for (const tool of recentTools) rows.push({ kind: "tool", tool, pinned: false })
+    }
+    rows.push({ kind: "all" })
+    return rows
+  }, [pinnedToolIds, recentToolIds])
+
+  let toolRailIndicatorTop: number | null = null
+  {
+    let y = 0
+    for (const row of toolRailRows) {
+      const height =
+        row.kind === "label" ? TOOLS_SUB_NAV_LABEL_PX : TOOLS_SUB_NAV_ROW_PX
+      const rowActive =
+        row.kind === "tool" ? pathname === row.tool.path : row.kind === "all" && isToolsHub
+      if (rowActive) toolRailIndicatorTop = y + height / 2
+      y += height
+    }
+  }
 
   return (
     <aside className="sticky top-0 z-20 flex h-svh w-60 shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar text-sidebar-foreground">
@@ -262,19 +316,51 @@ export const SidebarPanel = memo(function SidebarPanel({
               }
             />
             {toolsExpanded ? (
-              <SubNavRail activeIndex={toolsSubNavActiveIndex}>
-                {TOOLS.map((tool) => (
-                  <SubNavItem
-                    key={tool.id}
-                    label={tool.name}
-                    active={pathname === tool.path}
-                    onClick={() =>
-                      startTransition(() => {
-                        navigate({ to: tool.path })
-                      })
-                    }
-                  />
-                ))}
+              <SubNavRail indicatorTop={toolRailIndicatorTop}>
+                {toolRailRows.map((row) => {
+                  if (row.kind === "label") {
+                    return (
+                      <div
+                        key={`label-${row.text}`}
+                        className="flex h-6 items-center pl-9.5 text-[9px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60"
+                      >
+                        {row.text}
+                      </div>
+                    )
+                  }
+                  if (row.kind === "all") {
+                    return (
+                      <SubNavItem
+                        key="all-tools"
+                        label="All tools"
+                        active={isToolsHub}
+                        onClick={() =>
+                          startTransition(() => {
+                            navigate({ to: "/tools" })
+                          })
+                        }
+                        trailing={
+                          <span className="text-[10px] tabular-nums text-muted-foreground/60">
+                            {TOOLS.length}
+                          </span>
+                        }
+                      />
+                    )
+                  }
+                  return (
+                    <SubNavItem
+                      key={row.tool.id}
+                      label={row.tool.name}
+                      icon={row.pinned ? Pin : undefined}
+                      active={pathname === row.tool.path}
+                      onClick={() =>
+                        startTransition(() => {
+                          navigate({ to: row.tool.path })
+                        })
+                      }
+                    />
+                  )
+                })}
               </SubNavRail>
             ) : null}
             <NavItem
