@@ -250,16 +250,26 @@ html:not(.dark):not([data-surface="opaque"])
   }
 
   /*
-   * Section headings ("— TITLE ———") float on the page. Over a backdrop
-   * image they become a panel strip so they read on any part of it.
+   * Section headings ("— TITLE ———") and filter labels ("[STATUS]") float
+   * on the page. Over a backdrop image they become panel strips so they
+   * read on any part of it.
    */
-  html[data-backdrop="image"] .section-heading {
-    min-height: 2rem;
-    padding: 0.125rem 0.75rem;
+  html[data-backdrop="image"] :is(.section-heading, .filter-label) {
     border: 1px solid var(--border);
     background-color: var(--card);
   }
-  html[data-backdrop="image"][data-surface="frosted"] .section-heading {
+  html[data-backdrop="image"] .section-heading {
+    min-height: 2rem;
+    padding: 0.125rem 0.75rem;
+  }
+  /* Same height as the button group next to it. */
+  html[data-backdrop="image"] .filter-label {
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    padding-inline: 0.5rem;
+  }
+  html[data-backdrop="image"][data-surface="frosted"] :is(.section-heading, .filter-label) {
     -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(1.15);
     backdrop-filter: blur(var(--panel-blur)) saturate(1.15);
   }

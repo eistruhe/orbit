@@ -155,7 +155,7 @@ function FilterChips({
   const cueAttrs = useCueAttrs()
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+      <span className="filter-label text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
         [{label}]
       </span>
       <div role="radiogroup" aria-label={label} className="flex items-stretch border border-border bg-card">
