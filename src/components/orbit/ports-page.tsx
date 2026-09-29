@@ -1,6 +1,7 @@
 import { Loader2, RefreshCw, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
+import { SectionHeading } from "@/components/orbit/section-heading"
 import { OrbitDialog } from "@/components/orbit/orbit-dialog"
 import { useOrbit } from "@/components/orbit/orbit-context"
 import { Button } from "@/components/ui/button"
@@ -122,29 +123,29 @@ export function PortsPage() {
 
   return (
     <section className="space-y-3">
-      <header className="flex items-center gap-3">
-        <span className="h-px w-3.5 bg-foreground" aria-hidden />
-        <h2 className="text-[11px] font-medium uppercase tracking-[0.16em]">
-          Listening TCP ports
-        </h2>
-        <span className="h-px flex-1 bg-border" aria-hidden />
-        <span className="text-[10px] tabular-nums text-foreground/80">
-          {groups.length}
-        </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => void refresh()}
-          aria-label="Refresh"
-        >
-          {refreshing ? (
-            <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
-          ) : (
-            <RefreshCw className="size-3.5 text-muted-foreground" />
-          )}
-        </Button>
-      </header>
+      <SectionHeading
+        title="Listening TCP ports"
+        trailing={
+          <>
+            <span className="text-[10px] tabular-nums text-foreground/80">
+              {groups.length}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => void refresh()}
+              aria-label="Refresh"
+            >
+              {refreshing ? (
+                <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+              ) : (
+                <RefreshCw className="size-3.5 text-muted-foreground" />
+              )}
+            </Button>
+          </>
+        }
+      />
 
       {error ? (
         <div

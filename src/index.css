@@ -250,6 +250,21 @@ html:not(.dark):not([data-surface="opaque"])
   }
 
   /*
+   * Section headings ("— TITLE ———") float on the page. Over a backdrop
+   * image they become a panel strip so they read on any part of it.
+   */
+  html[data-backdrop="image"] .section-heading {
+    min-height: 2rem;
+    padding: 0.125rem 0.75rem;
+    border: 1px solid var(--border);
+    background-color: var(--card);
+  }
+  html[data-backdrop="image"][data-surface="frosted"] .section-heading {
+    -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(1.15);
+    backdrop-filter: blur(var(--panel-blur)) saturate(1.15);
+  }
+
+  /*
    * App chrome (sidebar and sticky page headers) shares one surface so both
    * read as the same material. Headers need the blur in tinted mode too,
    * since page content scrolls underneath them.

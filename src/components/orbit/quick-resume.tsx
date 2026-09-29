@@ -1,6 +1,7 @@
 import { Pencil, Pin } from "lucide-react"
 import { memo } from "react"
 
+import { SectionHeading } from "@/components/orbit/section-heading"
 import { OpenTargetButtons } from "@/components/orbit/open-target-buttons"
 import { StatusBadge } from "@/components/orbit/status-badge"
 import { diskLabel, syncLabel } from "@/lib/repo-facts"
@@ -22,25 +23,6 @@ type QuickResumeProps = {
   repoNotes: Record<string, string>
   repoTags: Record<string, string[]>
   onEditMetadata: (path: string) => void
-}
-
-function SectionHeading({
-  title,
-  trailing,
-}: {
-  title: string
-  trailing?: React.ReactNode
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="h-px w-3.5 bg-foreground uppercase tracking-[0.16em] text-muted-foreground"></span>
-      <h2 className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground">
-        {title}
-      </h2>
-      <span className="h-px flex-1 bg-border" aria-hidden />
-      {trailing}
-    </div>
-  )
 }
 
 /**

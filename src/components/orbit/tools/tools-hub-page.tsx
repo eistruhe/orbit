@@ -1,6 +1,7 @@
 import { ChevronRight, Pin } from "lucide-react"
 import { useNavigate } from "@tanstack/react-router"
 
+import { SectionHeading } from "@/components/orbit/section-heading"
 import { TOOL_CATEGORIES, TOOLS } from "@/components/orbit/tools/tool-registry"
 import { toggleToolPin, useToolLists } from "@/hooks/use-tool-pins"
 import { cn } from "@/lib/utils"
@@ -24,16 +25,14 @@ export function ToolsHubPage() {
     <section className="space-y-8">
       {groups.map((group) => (
         <div key={group.category.id} className="space-y-3">
-          <header className="flex items-center gap-3">
-            <span className="h-px w-3.5 bg-foreground" aria-hidden />
-            <h2 className="text-[11px] font-medium uppercase tracking-[0.16em]">
-              {group.category.label}
-            </h2>
-            <span className="h-px flex-1 bg-border" aria-hidden />
-            <span className="text-[10px] tabular-nums text-foreground/80">
-              {group.tools.length}
-            </span>
-          </header>
+          <SectionHeading
+            title={group.category.label}
+            trailing={
+              <span className="text-[10px] tabular-nums text-foreground/80">
+                {group.tools.length}
+              </span>
+            }
+          />
 
           <div className="cell-grid grid gap-px border border-border bg-card md:grid-cols-2 xl:grid-cols-3">
             {group.tools.map((tool) => {
