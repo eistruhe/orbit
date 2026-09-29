@@ -156,7 +156,7 @@ function FilterChips({
       <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
         [{label}]
       </span>
-      <div className="flex items-stretch border border-border">
+      <div className="flex items-stretch border border-border bg-card">
         {options.map((o, i) => {
           const isActive = value === o.value
           return (
