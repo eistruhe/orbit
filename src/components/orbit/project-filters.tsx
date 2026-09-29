@@ -154,7 +154,7 @@ function FilterChips({
 }) {
   const cueAttrs = useCueAttrs()
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="filter-group flex items-center gap-1.5">
       <span className="filter-label text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
         [{label}]
       </span>

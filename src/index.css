@@ -170,6 +170,11 @@ html:not(.dark):not([data-surface="opaque"])
   background-color: oklch(1 0 0 / 0.55);
 }
 
+/* Filter label and buttons form one block over a backdrop (see .filter-label). */
+html[data-backdrop="image"] .filter-group {
+  gap: 0;
+}
+
 @layer base {
   * {
     @apply rounded-none border-border outline-ring/50 focus-visible:ring-0!;
@@ -262,12 +267,20 @@ html:not(.dark):not([data-surface="opaque"])
     min-height: 2rem;
     padding: 0.125rem 0.75rem;
   }
-  /* Same height as the button group next to it. */
+  /*
+   * Label joins its button group as the first cell: same height, shared
+   * border (the group's left edge is the divider), a muted cell tint.
+   */
   html[data-backdrop="image"] .filter-label {
     align-self: stretch;
     display: flex;
     align-items: center;
     padding-inline: 0.5rem;
+    border-right-width: 0;
+    background-image: linear-gradient(
+      color-mix(in oklch, var(--foreground) 5%, transparent),
+      color-mix(in oklch, var(--foreground) 5%, transparent)
+    );
   }
   html[data-backdrop="image"][data-surface="frosted"] :is(.section-heading, .filter-label) {
     -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(1.15);
