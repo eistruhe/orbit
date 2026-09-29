@@ -314,9 +314,11 @@ function renderPlain(
     const t = step / 8
     gradient.addColorStop(t, `rgba(0,0,0,${smoothstep(1 - t)})`)
   }
+  // destination-in clears everything outside the filled shape, so the mask
+  // must span the whole canvas; the gradient pads opaque above the fade.
   ctx.globalCompositeOperation = "destination-in"
   ctx.fillStyle = gradient
-  ctx.fillRect(0, bottom - length, canvas.width, length)
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.globalCompositeOperation = "source-over"
 }
 
