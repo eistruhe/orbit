@@ -232,6 +232,21 @@
     backdrop-filter: blur(var(--panel-blur)) saturate(1.15);
   }
 
+  /*
+   * Cell grid (`cell-grid grid gap-px border bg-card`): each cell's 1px
+   * outline fills the gap, so lines need no opaque backing and empty
+   * trailing cells share the panel surface (tinted/frosted) instead of
+   * showing a solid border-colored block.
+   */
+  .cell-grid > * {
+    outline: 1px solid var(--border);
+  }
+  /* Keyboard focus stays visible (the rule above replaces the UA ring). */
+  .cell-grid > *:focus-visible {
+    outline-color: var(--ring);
+    z-index: 1;
+  }
+
   /* Background image layer (components/orbit/app-backdrop.tsx). */
   /* The fade is baked into the canvas so it can dissolve into the effect. */
   .app-backdrop {

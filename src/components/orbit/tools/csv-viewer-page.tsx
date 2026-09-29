@@ -455,13 +455,13 @@ export function CsvViewerPage() {
               </span>
             }
           >
-            <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 border border-border">
+            <div className="cell-grid grid gap-px border border-border bg-card sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {headers.map((header, column) => {
                 const stat = stats[column]
                 return (
                   <label
                     key={column}
-                    className="flex cursor-pointer items-center gap-2 bg-card px-2.5 py-2 transition-colors hover:bg-muted/60"
+                    className="flex cursor-pointer items-center gap-2 px-2.5 py-2 transition-colors hover:bg-muted/60"
                   >
                     <Checkbox
                       checked={!hiddenColumns.has(column)}

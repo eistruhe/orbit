@@ -134,7 +134,7 @@ export const QuickResume = memo(function QuickResume({
         </div>
       ) : null}
       {!showLoadingPlaceholder && !showEmpty ? (
-        <div className="grid gap-px bg-border md:grid-cols-2 xl:grid-cols-3 border border-border">
+        <div className="cell-grid grid gap-px border border-border bg-card md:grid-cols-2 xl:grid-cols-3">
           {repos.map((repo, idx) => {
             const sync = syncLabel(repo)
             const disk = diskLabel(repo)
@@ -151,7 +151,7 @@ export const QuickResume = memo(function QuickResume({
               <div
                 key={repo.path}
                 className={cn(
-                  "group/card relative flex h-full cursor-pointer flex-col bg-card transition-colors hover:bg-background/90 dark:hover:bg-background/50",
+                  "group/card relative flex h-full cursor-pointer flex-col transition-colors hover:bg-background/90 dark:hover:bg-background/50",
                 )}
                 role="button"
                 tabIndex={0}

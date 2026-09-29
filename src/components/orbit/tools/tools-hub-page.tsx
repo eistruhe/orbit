@@ -35,14 +35,14 @@ export function ToolsHubPage() {
             </span>
           </header>
 
-          <div className="grid gap-px border border-border bg-border md:grid-cols-2 xl:grid-cols-3">
+          <div className="cell-grid grid gap-px border border-border bg-card md:grid-cols-2 xl:grid-cols-3">
             {group.tools.map((tool) => {
               const Icon = tool.icon
               const isPinned = pinned.includes(tool.id)
               return (
                 <div
                   key={tool.id}
-                  className="group/tool relative bg-card transition-colors hover:bg-muted/60"
+                  className="group/tool relative transition-colors hover:bg-muted/60"
                 >
                   <button
                     type="button"
