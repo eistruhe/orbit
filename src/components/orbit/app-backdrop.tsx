@@ -1,13 +1,9 @@
 import { useTheme } from "next-themes"
 import { useEffect, useMemo, useRef, useState } from "react"
 
-import { useAppearance } from "@/lib/appearance"
+import { DEFAULT_ACCENT, parseHexColor, useAppearance } from "@/lib/appearance"
 import { loadBackdropImage } from "@/lib/backdrop-image-store"
-import {
-  readHighlightColor,
-  renderBackdrop,
-  type BackdropColors,
-} from "@/lib/backdrop-render"
+import { renderBackdrop, type BackdropColors } from "@/lib/backdrop-render"
 
 /**
  * The fixed backdrop spans the layout viewport; clientWidth excludes a root
@@ -49,15 +45,15 @@ function useViewportSize() {
  * dimming are plain CSS (see `.app-backdrop` in index.css).
  */
 export function AppBackdrop() {
-  const { image, backdrop } = useAppearance()
+  const { image, backdrop, accent } = useAppearance()
   const viewport = useViewportSize()
   const { resolvedTheme } = useTheme()
   const colors = useMemo<BackdropColors>(
     () => ({
-      highlight: readHighlightColor(),
+      highlight: parseHexColor(accent) ?? parseHexColor(DEFAULT_ACCENT) ?? [255, 107, 26],
       ink: resolvedTheme === "light" ? [28, 28, 28] : [236, 236, 236],
     }),
-    [resolvedTheme],
+    [resolvedTheme, accent],
   )
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [loaded, setLoaded] = useState<{ version: number; bitmap: ImageBitmap } | null>(null)

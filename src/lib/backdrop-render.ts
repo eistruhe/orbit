@@ -363,14 +363,3 @@ export function renderBackdrop(
   canvas.getContext("2d")?.putImageData(image, 0, 0)
   return { pixelated: cell > 1 }
 }
-
-/** Reads `--highlight` (hex) from the document, falling back to Orbit orange. */
-export function readHighlightColor(): Rgb {
-  const value = getComputedStyle(document.documentElement)
-    .getPropertyValue("--highlight")
-    .trim()
-  const match = /^#?([0-9a-f]{6})$/i.exec(value)
-  if (!match) return [255, 107, 26]
-  const n = Number.parseInt(match[1], 16)
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
-}

@@ -49,7 +49,7 @@ export function ProjectsLayout() {
 
   return (
     <>
-      <header className="app-drag sticky top-0 z-20 flex h-12 items-center justify-between gap-4 border-b border-border bg-sidebar/85 px-3 backdrop-blur-md">
+      <header className="app-drag sticky top-0 z-20 flex h-12 shrink-0 items-center justify-between gap-4 border-b border-border bg-sidebar/85 px-3 backdrop-blur-md">
         <div className="flex items-center gap-5 overflow-hidden">
           <StatItem label="Projects" value={repos.length} emphasis />
           <span className="stat-divider" aria-hidden />

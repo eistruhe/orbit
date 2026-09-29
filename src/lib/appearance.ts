@@ -38,6 +38,8 @@ export type BackdropImageMeta = {
 }
 
 export type Appearance = {
+  /** Accent color as #rrggbb; drives `--highlight` everywhere. */
+  accent: string
   layout: ContentLayout
   surface: SurfaceMode
   /** Panel opacity in percent for tinted/frosted surfaces. */
@@ -49,7 +51,23 @@ export type Appearance = {
   image: BackdropImageMeta | null
 }
 
+export const DEFAULT_ACCENT = "#FF6B1A"
+
+/** Swatches offered in settings; any other hex works via the color picker. */
+export const ACCENT_PRESETS = [
+  { value: DEFAULT_ACCENT, label: "Orange" },
+  { value: "#F5B400", label: "Amber" },
+  { value: "#84CC16", label: "Lime" },
+  { value: "#10B981", label: "Emerald" },
+  { value: "#06B6D4", label: "Cyan" },
+  { value: "#3B82F6", label: "Blue" },
+  { value: "#8B5CF6", label: "Violet" },
+  { value: "#EC4899", label: "Pink" },
+  { value: "#EF4444", label: "Red" },
+] as const
+
 export const DEFAULT_APPEARANCE: Appearance = {
+  accent: DEFAULT_ACCENT,
   layout: "centered",
   surface: "opaque",
   panelOpacity: 78,
@@ -74,6 +92,23 @@ export const DEFAULT_APPEARANCE: Appearance = {
 /** Lowest panel opacity allowed, so 11px text stays readable. */
 export const MIN_PANEL_OPACITY = 40
 
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+
+/** Parses #rrggbb into channels, or null for anything else. */
+export function parseHexColor(value: string): [number, number, number] | null {
+  const trimmed = value.trim()
+  if (!HEX_COLOR.test(trimmed)) return null
+  const n = Number.parseInt(trimmed.slice(1), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+/** Near-black or white, whichever reads better on `accent`. */
+function accentForeground(accent: string): string {
+  const [r, g, b] = parseHexColor(accent) ?? [255, 107, 26]
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+  return luminance > 0.62 ? "#111111" : "#ffffff"
+}
+
 function pick<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return typeof value === "string" && (allowed as readonly string[]).includes(value)
     ? (value as T)
@@ -97,6 +132,10 @@ function parseAppearance(input: unknown): Appearance {
   const db = d.backdrop
 
   return {
+    accent:
+      typeof raw.accent === "string" && HEX_COLOR.test(raw.accent)
+        ? raw.accent.toUpperCase()
+        : d.accent,
     layout: pick(raw.layout, ["centered", "left", "full"], d.layout),
     surface: pick(raw.surface, ["opaque", "tinted", "frosted"], d.surface),
     panelOpacity: clampNumber(raw.panelOpacity, MIN_PANEL_OPACITY, 100, d.panelOpacity),
@@ -153,6 +192,8 @@ export function applyAppearanceToDocument(appearance: Appearance = snapshot) {
   root.dataset.layout = appearance.layout
   root.dataset.surface = appearance.surface
   root.dataset.backdrop = appearance.image ? "image" : "none"
+  root.style.setProperty("--highlight", appearance.accent)
+  root.style.setProperty("--highlight-foreground", accentForeground(appearance.accent))
   root.style.setProperty(
     "--panel-alpha",
     appearance.surface === "opaque" ? "1" : String(appearance.panelOpacity / 100),

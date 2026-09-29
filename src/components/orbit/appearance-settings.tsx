@@ -6,7 +6,9 @@ import { SegmentedControl, type SegmentedOption } from "@/components/orbit/segme
 import { ToolSection } from "@/components/orbit/tools/tool-section"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
+import { cn } from "@/lib/utils"
 import {
+  ACCENT_PRESETS,
   getAppearance,
   MIN_PANEL_OPACITY,
   resetAppearance,
@@ -54,7 +56,7 @@ const PALETTE_OPTIONS: SegmentedOption<BackdropPalette>[] = [
   { value: "color", label: "Color", title: "Original colors, background shows between pixels" },
   { value: "posterize", label: "Posterize", title: "Four levels per color channel" },
   { value: "mono", label: "Mono" },
-  { value: "duotone", label: "Duotone", title: "Black and the Orbit highlight color" },
+  { value: "duotone", label: "Duotone", title: "Rendered in the accent color" },
 ]
 
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
@@ -100,6 +102,47 @@ function SliderRow({ label, value, min, max, step = 1, unit = "", disabled, onCh
         </span>
       </div>
     </FieldRow>
+  )
+}
+
+function AccentPicker({ value }: { value: string }) {
+  const isPreset = ACCENT_PRESETS.some((preset) => preset.value === value)
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {ACCENT_PRESETS.map((preset) => (
+        <button
+          key={preset.value}
+          type="button"
+          title={`${preset.label} ${preset.value}`}
+          aria-label={preset.label}
+          aria-pressed={preset.value === value}
+          onClick={() => updateAppearance({ accent: preset.value })}
+          className={cn(
+            "size-6 border border-border transition-[outline-color] outline-offset-2",
+            preset.value === value
+              ? "outline-2 outline-foreground"
+              : "outline-1 outline-transparent hover:outline-border-strong",
+          )}
+          style={{ backgroundColor: preset.value }}
+        />
+      ))}
+      <label
+        title="Custom color"
+        className={cn(
+          "relative flex h-6 cursor-pointer items-center gap-1.5 border border-border px-1.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground outline-offset-2 hover:text-foreground",
+          !isPreset && "outline-2 outline-foreground",
+        )}
+      >
+        <span className="size-3 border border-border" style={{ backgroundColor: value }} />
+        {isPreset ? "Custom" : value}
+        <input
+          type="color"
+          value={value.toLowerCase()}
+          onChange={(event) => updateAppearance({ accent: event.target.value.toUpperCase() })}
+          className="absolute inset-0 size-full cursor-pointer opacity-0"
+        />
+      </label>
+    </div>
   )
 }
 
@@ -178,7 +221,7 @@ export function AppearanceSettings() {
   return (
     <ToolSection
       title="Appearance"
-      description="Layout, panel surfaces, and background image. Applies instantly and is stored on this machine."
+      description="Accent color, layout, panel surfaces, and background image. Applies instantly and is stored on this machine."
       footer={
         <Button type="button" variant="outline" size="sm" onClick={resetAppearance}>
           Reset appearance
@@ -187,6 +230,9 @@ export function AppearanceSettings() {
     >
       <div className="space-y-5">
         <div className="space-y-3">
+          <FieldRow label="Accent">
+            <AccentPicker value={appearance.accent} />
+          </FieldRow>
           <FieldRow label="Content">
             <SegmentedControl
               options={LAYOUT_OPTIONS}
