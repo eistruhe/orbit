@@ -11,6 +11,8 @@ export type BackdropFit = "width" | "cover"
 export type BackdropSettings = {
   /** `width`: full width, anchored top (fades out below); `cover`: whole window. */
   fit: BackdropFit
+  /** Height of the top band for `width` fit, in percent of the window. */
+  bandHeight: number
   /** Crop focus in percent (0 = left/top, 100 = right/bottom). */
   focusX: number
   focusY: number
@@ -54,6 +56,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   panelBlur: 16,
   backdrop: {
     fit: "width",
+    bandHeight: 65,
     focusX: 50,
     focusY: 25,
     effect: "dither",
@@ -100,6 +103,7 @@ function parseAppearance(input: unknown): Appearance {
     panelBlur: clampNumber(raw.panelBlur, 0, 40, d.panelBlur),
     backdrop: {
       fit: pick(rawBackdrop.fit, ["width", "cover"], db.fit),
+      bandHeight: clampNumber(rawBackdrop.bandHeight, 30, 100, db.bandHeight),
       focusX: clampNumber(rawBackdrop.focusX, 0, 100, db.focusX),
       focusY: clampNumber(rawBackdrop.focusY, 0, 100, db.focusY),
       effect: pick(

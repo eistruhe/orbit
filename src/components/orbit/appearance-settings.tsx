@@ -46,7 +46,7 @@ const EFFECT_OPTIONS: SegmentedOption<BackdropEffect>[] = [
 ]
 
 const FIT_OPTIONS: SegmentedOption<BackdropFit>[] = [
-  { value: "width", label: "Fit width", title: "Full width, anchored at the top, fades out below" },
+  { value: "width", label: "Fit width", title: "Top band across the full width, fades out below" },
   { value: "cover", label: "Cover", title: "Fill the whole window" },
 ]
 
@@ -286,16 +286,24 @@ export function AppearanceSettings() {
                   className="w-fit"
                 />
               </FieldRow>
-              {backdrop.fit === "cover" ? (
+              {backdrop.fit === "width" ? (
                 <SliderRow
-                  label="Position X"
-                  value={backdrop.focusX}
-                  min={0}
+                  label="Height"
+                  value={backdrop.bandHeight}
+                  min={30}
                   max={100}
                   unit="%"
-                  onChange={(focusX) => updateBackdrop({ focusX })}
+                  onChange={(bandHeight) => updateBackdrop({ bandHeight })}
                 />
               ) : null}
+              <SliderRow
+                label="Position X"
+                value={backdrop.focusX}
+                min={0}
+                max={100}
+                unit="%"
+                onChange={(focusX) => updateBackdrop({ focusX })}
+              />
               <SliderRow
                 label="Position Y"
                 value={backdrop.focusY}

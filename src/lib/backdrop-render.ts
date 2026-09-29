@@ -16,7 +16,14 @@ type Viewport = {
   devicePixelRatio: number
 }
 
-type Placement = { x: number; y: number; width: number; height: number }
+type Placement = {
+  x: number
+  y: number
+  width: number
+  height: number
+  /** The image is clipped below this canvas row (bottom of the band). */
+  clipBottom: number
+}
 
 /** Classic 8×8 ordered-dither threshold matrix (values 0–63). */
 const BAYER_8 = [
@@ -51,10 +58,13 @@ function effectiveDpr({ width, height, devicePixelRatio }: Viewport): number {
 }
 
 /**
- * Where the image lands in a `width`×`height` canvas. `width` fit scales to
- * the full width and anchors at the top (only cropping vertically when the
- * image is taller than the window); `cover` fills the whole window.
- * Placement is scale-invariant, so it works at any render resolution.
+ * Where the image lands in a `width`×`height` canvas.
+ *
+ * `width` fit covers a top band (full width × `bandHeight` % of the window),
+ * like Ceron: wide windows crop the image at the bottom, narrow windows keep
+ * the band height and crop left/right instead of shrinking the image.
+ * `cover` fills the whole window. Placement is scale-invariant, so it works
+ * at any render resolution.
  */
 function place(
   source: ImageBitmap,
@@ -64,23 +74,16 @@ function place(
 ): Placement {
   const focusX = settings.focusX / 100
   const focusY = settings.focusY / 100
-  if (settings.fit === "width") {
-    const scaledHeight = source.height * (width / source.width)
-    return {
-      x: 0,
-      y: scaledHeight > height ? (height - scaledHeight) * focusY : 0,
-      width,
-      height: scaledHeight,
-    }
-  }
-  const scale = Math.max(width / source.width, height / source.height)
+  const boxHeight = settings.fit === "width" ? height * (settings.bandHeight / 100) : height
+  const scale = Math.max(width / source.width, boxHeight / source.height)
   const scaledWidth = source.width * scale
   const scaledHeight = source.height * scale
   return {
     x: (width - scaledWidth) * focusX,
-    y: (height - scaledHeight) * focusY,
+    y: (boxHeight - scaledHeight) * focusY,
     width: scaledWidth,
     height: scaledHeight,
+    clipBottom: boxHeight,
   }
 }
 
@@ -94,7 +97,7 @@ function smoothstep(t: number): number {
  */
 function fadeRows(placement: Placement, rows: number, fade: number): Float32Array {
   const top = Math.max(0, placement.y)
-  const bottom = Math.min(rows, placement.y + placement.height)
+  const bottom = Math.min(rows, placement.clipBottom, placement.y + placement.height)
   const length = Math.max(0, bottom - top) * (fade / 100)
   const ramp = new Float32Array(rows)
   for (let row = 0; row < rows; row += 1) {
@@ -104,6 +107,15 @@ function fadeRows(placement: Placement, rows: number, fade: number): Float32Arra
     else ramp[row] = smoothstep((bottom - y) / length)
   }
   return ramp
+}
+
+function drawPlaced(ctx: CanvasRenderingContext2D, source: ImageBitmap, placement: Placement) {
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(0, 0, ctx.canvas.width, placement.clipBottom)
+  ctx.clip()
+  ctx.drawImage(source, placement.x, placement.y, placement.width, placement.height)
+  ctx.restore()
 }
 
 function sample(
@@ -121,7 +133,7 @@ function sample(
   ctx.filter = `brightness(${settings.brightness}%) contrast(${settings.contrast}%)`
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = "high"
-  ctx.drawImage(source, placement.x, placement.y, placement.width, placement.height)
+  drawPlaced(ctx, source, placement)
   ctx.filter = "none"
   return { image: ctx.getImageData(0, 0, width, height), placement }
 }
@@ -291,10 +303,10 @@ function renderPlain(
   ctx.filter = `brightness(${settings.brightness}%) contrast(${settings.contrast}%)`
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = "high"
-  ctx.drawImage(source, placement.x, placement.y, placement.width, placement.height)
+  drawPlaced(ctx, source, placement)
   ctx.filter = "none"
 
-  const bottom = Math.min(canvas.height, placement.y + placement.height)
+  const bottom = Math.min(canvas.height, placement.clipBottom, placement.y + placement.height)
   const length = (bottom - Math.max(0, placement.y)) * (settings.fade / 100)
   if (length <= 0) return
   const gradient = ctx.createLinearGradient(0, bottom - length, 0, bottom)
