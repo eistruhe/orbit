@@ -21,7 +21,7 @@ import {
 import { auditProjects } from "./deps.ts"
 import { lookupDns } from "./dns.ts"
 import { listEnvFiles, readEnvValues } from "./env-files.ts"
-import { writeBatchFiles, writeDerivedFile } from "./files.ts"
+import { replaceFileInPlace, writeBatchFiles, writeDerivedFile } from "./files.ts"
 import { checkSslDomains } from "./ssl.ts"
 import { fetchSeoAudit } from "./seo.ts"
 import { openLocalPath, resolvePathUnderAllowedRoots } from "./open-path.ts"
@@ -779,6 +779,28 @@ app.post("/api/files/write-batch", async (c) => {
     return c.json({ error: result.error }, result.status as 400 | 413 | 500)
   }
   return c.json({ written: result.written })
+})
+
+app.post("/api/files/replace", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+  const path = (body as { path?: unknown }).path
+  const dataBase64 = (body as { dataBase64?: unknown }).dataBase64
+  if (typeof path !== "string" || path.length === 0 || typeof dataBase64 !== "string") {
+    return c.json({ error: "path and dataBase64 are required" }, 400)
+  }
+
+  const result = await replaceFileInPlace({ path, dataBase64 })
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400 | 413 | 500)
+  }
+  return c.json({
+    outputPath: result.outputPath,
+    inputSize: result.inputSize,
+    outputSize: result.outputSize,
+  })
 })
 
 app.get("/api/env/files", async (c) => {

@@ -1,5 +1,5 @@
-import { stat, writeFile } from "node:fs/promises"
-import { basename, resolve } from "node:path"
+import { rename, rm, stat, writeFile } from "node:fs/promises"
+import { basename, dirname, extname, join, parse, resolve } from "node:path"
 
 import { getUniqueSiblingPath } from "./util.ts"
 
@@ -13,6 +13,13 @@ export type WriteDerivedResult =
 export type WriteBatchResult =
   | { ok: true; written: { name: string; outputPath: string }[] }
   | { ok: false; status: number; error: string }
+
+export type ReplaceFileResult =
+  | { ok: true; outputPath: string; inputSize: number; outputSize: number }
+  | { ok: false; status: number; error: string }
+
+/** Extensions that tools may overwrite in place (text formats only). */
+const REPLACEABLE_EXTENSIONS = new Set([".svg"])
 
 function decodeBase64(dataBase64: string): Buffer | null {
   try {
@@ -133,4 +140,60 @@ export async function writeBatchFiles(input: {
   }
 
   return { ok: true, written }
+}
+
+/**
+ * Overwrites a user-picked file with new bytes. The write is atomic: bytes
+ * go to a hidden temp sibling first and are then renamed over the original
+ * (same approach as the Tinify "replace original" flow). Only extensions in
+ * REPLACEABLE_EXTENSIONS are accepted so the endpoint cannot clobber
+ * arbitrary files.
+ */
+export async function replaceFileInPlace(input: {
+  path: string
+  dataBase64: string
+}): Promise<ReplaceFileResult> {
+  const targetPath = resolve(input.path)
+  const extension = extname(targetPath).toLowerCase()
+  if (!REPLACEABLE_EXTENSIONS.has(extension)) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Only ${Array.from(REPLACEABLE_EXTENSIONS).join(", ")} files can be replaced in place`,
+    }
+  }
+
+  let inputSize: number
+  try {
+    const st = await stat(targetPath)
+    if (!st.isFile()) {
+      return { ok: false, status: 400, error: "Target path is not a file" }
+    }
+    inputSize = st.size
+  } catch {
+    return { ok: false, status: 400, error: "Target file does not exist" }
+  }
+
+  const bytes = decodeBase64(input.dataBase64)
+  if (!bytes) {
+    return { ok: false, status: 400, error: "Missing or invalid file data" }
+  }
+  if (bytes.length > MAX_WRITE_BYTES) {
+    return { ok: false, status: 413, error: "Output file is too large" }
+  }
+
+  const parsed = parse(targetPath)
+  const tempPath = join(
+    dirname(targetPath),
+    `.${parsed.name}.orbit-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}${parsed.ext}`,
+  )
+  try {
+    await writeFile(tempPath, bytes)
+    await rename(tempPath, targetPath)
+    return { ok: true, outputPath: targetPath, inputSize, outputSize: bytes.length }
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(() => undefined)
+    const message = error instanceof Error ? error.message : String(error)
+    return { ok: false, status: 500, error: message }
+  }
 }

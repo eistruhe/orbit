@@ -1,4 +1,4 @@
-import { Check, Copy, Download } from "lucide-react"
+import { Check, Copy, Download, HardDriveDownload, Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, } from "react"
 
 import { useOrbit } from "@/components/orbit/orbit-context"
@@ -6,18 +6,31 @@ import { DropZone } from "@/components/orbit/drop-zone"
 import { ToolSection } from "@/components/orbit/tools/tool-section"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
+import { replaceFileContents } from "@/lib/api"
+import { formatBytes } from "@/lib/format-size"
+import { batchCue, cue } from "@/lib/sound"
 import { createDefaultSvgoSettings, mergeSvgoSettings, type SvgoUiSettings, } from "@/lib/svgo/default-settings"
 import { optimizeSvgString } from "@/lib/svgo/optimize-svg"
 import { svgoPluginConfig } from "@/lib/svgo/svgo-plugin-config"
-import { cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
+
+type WriteStatus = "idle" | "writing" | "written" | "error"
 
 type SvgInputItem = {
   id: string
   name: string
   original: string
+  /** Absolute path on disk when the file came from the desktop bridge. */
+  diskPath: string
+  writeStatus: WriteStatus
+  /** Optimized markup that was last written to `diskPath`. */
+  writtenOptimized: string | null
+  writeError: string | null
+  inputSize: number | null
+  outputSize: number | null
 }
 
 type SvgResultItem = SvgInputItem & {
@@ -41,6 +54,46 @@ function makeId(prefix: string): string {
     return `${prefix}-${crypto.randomUUID()}`
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function resolveDiskPath(file: File): string {
+  const bridged = window.orbitFiles?.getPathForFile(file)
+  if (bridged && bridged.length > 0) return bridged
+  const withPath = file as File & { path?: string }
+  return typeof withPath.path === "string" ? withPath.path : ""
+}
+
+/** Only plain .svg files can be overwritten; .svgz would need gzip. */
+function isReplaceablePath(path: string): boolean {
+  return path.toLowerCase().endsWith(".svg")
+}
+
+function utf8ToBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text)
+  let binary = ""
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+  return btoa(binary)
+}
+
+function createInputItem(
+  name: string,
+  original: string,
+  diskPath = "",
+): SvgInputItem {
+  return {
+    id: makeId("svg"),
+    name,
+    original,
+    diskPath,
+    writeStatus: "idle",
+    writtenOptimized: null,
+    writeError: null,
+    inputSize: null,
+    outputSize: null,
+  }
 }
 
 function svgPreviewUri(svg: string): string {
@@ -77,6 +130,21 @@ export function SvgoPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState<CopyTarget>(null)
+  const [replaceOriginal, setReplaceOriginal] = useState(true)
+  const [writing, setWriting] = useState(false)
+
+  const settingsRef = useRef(settings)
+  const replaceOriginalRef = useRef(replaceOriginal)
+
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
+
+  useEffect(() => {
+    replaceOriginalRef.current = replaceOriginal
+  }, [replaceOriginal])
+
+  const supportsDesktopFileBridge = Boolean(window.orbitFiles?.getPathForFile)
 
   useEffect(() => {
     const currentSerialized = JSON.stringify(settings)
@@ -152,22 +220,79 @@ export function SvgoPage() {
     )
   }, [pluginQuery])
 
-  const readSvgFiles = useCallback(async (incoming: FileList | File[]) => {
-    const list = Array.from(incoming).filter(isSvgFile)
-    if (list.length === 0) return
-
-    const nextItems: SvgInputItem[] = []
-    for (const file of list) {
-      const text = await file.text()
-      nextItems.push({
-        id: makeId("svg"),
-        name: file.name,
-        original: text,
-      })
-    }
-
-    setFiles((current) => [...current, ...nextItems])
+  const updateFile = useCallback((id: string, patch: Partial<SvgInputItem>) => {
+    setFiles((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    )
   }, [])
+
+  /**
+   * Optimizes each item with the current settings and overwrites its file on
+   * disk. Items without a replaceable disk path are skipped.
+   */
+  const writeItemsToDisk = useCallback(
+    async (items: SvgInputItem[]) => {
+      const targets = items.filter(
+        (item) => item.diskPath && isReplaceablePath(item.diskPath),
+      )
+      if (targets.length === 0) return
+
+      setWriting(true)
+      let failed = 0
+      try {
+        for (const item of targets) {
+          updateFile(item.id, { writeStatus: "writing", writeError: null })
+          try {
+            const optimized = optimizeSvgString(item.original, settingsRef.current)
+            const result = await replaceFileContents(
+              item.diskPath,
+              utf8ToBase64(optimized),
+            )
+            updateFile(item.id, {
+              writeStatus: "written",
+              writtenOptimized: optimized,
+              writeError: null,
+              inputSize: item.inputSize ?? result.inputSize,
+              outputSize: result.outputSize,
+            })
+          } catch (error) {
+            failed += 1
+            updateFile(item.id, {
+              writeStatus: "error",
+              writeError:
+                error instanceof Error
+                  ? error.message
+                  : "Could not replace the original file.",
+            })
+          }
+        }
+      } finally {
+        setWriting(false)
+        batchCue(targets.length, failed)
+      }
+    },
+    [updateFile],
+  )
+
+  const readSvgFiles = useCallback(
+    async (incoming: FileList | File[]) => {
+      const list = Array.from(incoming).filter(isSvgFile)
+      if (list.length === 0) return
+
+      const nextItems: SvgInputItem[] = []
+      for (const file of list) {
+        const text = await file.text()
+        nextItems.push(createInputItem(file.name, text, resolveDiskPath(file)))
+      }
+
+      setFiles((current) => [...current, ...nextItems])
+
+      if (replaceOriginalRef.current) {
+        void writeItemsToDisk(nextItems)
+      }
+    },
+    [writeItemsToDisk],
+  )
 
   useEffect(() => {
     function onPaste(event: ClipboardEvent) {
@@ -201,11 +326,7 @@ export function SvgoPage() {
         ).length
         return [
           ...current,
-          {
-            id: makeId("svg"),
-            name: `pasted-${pastedCount + 1}.svg`,
-            original: text,
-          },
+          createInputItem(`pasted-${pastedCount + 1}.svg`, text),
         ]
       })
     }
@@ -255,21 +376,50 @@ export function SvgoPage() {
     if (allReady.length > 0) cue("success", { emphasis: "subtle" })
   }, [optimizedFiles])
 
+  const replaceableFiles = useMemo(
+    () => files.filter((item) => item.diskPath && isReplaceablePath(item.diskPath)),
+    [files],
+  )
+  const staleOnDisk = useMemo(
+    () =>
+      optimizedFiles.filter(
+        (item) =>
+          item.diskPath &&
+          isReplaceablePath(item.diskPath) &&
+          item.optimized &&
+          item.writeStatus !== "writing" &&
+          item.writtenOptimized !== item.optimized,
+      ),
+    [optimizedFiles],
+  )
+
   return (
     <div className="space-y-4">
       <ToolSection
         title="SVGO"
         description="Optimize one or many SVG files using SVGO settings."
         trailing={
-          <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-            {totalOptimized}/{files.length} optimized
+          <span className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+            {writing ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="size-3 animate-spin" />
+                Replacing
+              </span>
+            ) : null}
+            <span>
+              {totalOptimized}/{files.length} optimized
+            </span>
           </span>
         }
       >
         <div className="space-y-3">
           <DropZone
             label="Drag SVG files here, click to upload, or paste SVG code (⌘V)"
-            hint="SVG"
+            hint={
+              replaceOriginal && supportsDesktopFileBridge
+                ? "SVG · originals are replaced on disk right after optimization"
+                : "SVG"
+            }
             accept=".svg,image/svg+xml"
             multiple
             onFiles={(files) => void readSvgFiles(files)}
@@ -288,7 +438,7 @@ export function SvgoPage() {
               type="button"
               variant="outline"
               onClick={() => setFiles([])}
-              disabled={files.length === 0}
+              disabled={files.length === 0 || writing}
             >
               Clear files
             </Button>
@@ -319,12 +469,52 @@ export function SvgoPage() {
               <Download className="size-3.5" />
               Download all SVGs
             </Button>
+            {replaceOriginal && supportsDesktopFileBridge ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void writeItemsToDisk(replaceableFiles)}
+                disabled={writing || staleOnDisk.length === 0}
+                title={
+                  staleOnDisk.length > 0
+                    ? "Write the current optimization result over the original files"
+                    : "All files on disk match the current settings"
+                }
+              >
+                <HardDriveDownload className="size-3.5" />
+                {staleOnDisk.length > 0
+                  ? `Replace originals (${staleOnDisk.length})`
+                  : "Originals up to date"}
+              </Button>
+            ) : null}
             {saving ? (
               <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
                 Saving settings...
               </span>
             ) : null}
           </div>
+
+          <FieldGroup className="max-w-md">
+            <FieldLabel>
+              <Field orientation="horizontal">
+                <Checkbox
+                  id="svgoReplaceOriginal"
+                  checked={replaceOriginal}
+                  disabled={!supportsDesktopFileBridge}
+                  onCheckedChange={(checked) => setReplaceOriginal(Boolean(checked))}
+                />
+                <FieldContent>
+                  <FieldTitle>Replace original file</FieldTitle>
+                  <p className="text-[10px] text-muted-foreground">
+                    {supportsDesktopFileBridge
+                      ? "Dropped or uploaded .svg files are overwritten with the optimized output. Pasted code is never written."
+                      : "Open Orbit desktop to overwrite local files in place."}
+                  </p>
+                </FieldContent>
+              </Field>
+            </FieldLabel>
+          </FieldGroup>
+
           {saveError ? (
             <p className="text-[11px] text-destructive">{saveError}</p>
           ) : null}
@@ -484,9 +674,15 @@ export function SvgoPage() {
                   className="space-y-2 border border-border bg-background p-2"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="truncate text-[11px] font-medium text-foreground">
-                      {item.name}
-                    </p>
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="truncate text-[11px] font-medium text-foreground">
+                        {item.name}
+                      </p>
+                      <DiskStatus
+                        item={item}
+                        replaceOriginal={replaceOriginal && supportsDesktopFileBridge}
+                      />
+                    </div>
                     <div className="flex items-center gap-1">
                       <Button
                         type="button"
@@ -552,4 +748,69 @@ export function SvgoPage() {
       </div>
     </div>
   )
+}
+
+/**
+ * One-line status under the file name: whether (and how) the original on
+ * disk was replaced, and whether the disk copy still matches the settings.
+ */
+function DiskStatus({
+  item,
+  replaceOriginal,
+}: {
+  item: SvgResultItem
+  replaceOriginal: boolean
+}) {
+  const base = "text-[10px] uppercase tracking-[0.06em]"
+
+  if (item.writeStatus === "writing") {
+    return (
+      <p className={cn(base, "inline-flex items-center gap-1 text-muted-foreground")}>
+        <Loader2 className="size-3 animate-spin" />
+        Replacing original
+      </p>
+    )
+  }
+
+  if (item.writeStatus === "error") {
+    return (
+      <p className={cn(base, "text-destructive")}>
+        Replace failed: {item.writeError}
+      </p>
+    )
+  }
+
+  if (item.writeStatus === "written") {
+    const stale = item.optimized !== null && item.writtenOptimized !== item.optimized
+    const sizes =
+      item.inputSize !== null && item.outputSize !== null
+        ? `${formatBytes(item.inputSize) ?? "—"} → ${formatBytes(item.outputSize) ?? "—"}`
+        : null
+    return (
+      <p className={cn(base, stale ? "text-warning" : "text-success")}>
+        {stale ? "Disk copy outdated (settings changed)" : "Original replaced"}
+        {sizes ? <span className="text-muted-foreground"> · {sizes}</span> : null}
+      </p>
+    )
+  }
+
+  if (!replaceOriginal) return null
+
+  if (!item.diskPath) {
+    return (
+      <p className={cn(base, "text-muted-foreground")}>
+        No local path · nothing written
+      </p>
+    )
+  }
+
+  if (!isReplaceablePath(item.diskPath)) {
+    return (
+      <p className={cn(base, "text-muted-foreground")}>
+        Only .svg files are replaced (.svgz skipped)
+      </p>
+    )
+  }
+
+  return null
 }

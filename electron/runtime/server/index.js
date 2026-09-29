@@ -4077,7 +4077,7 @@ var require_serializer = __commonJS((exports, module) => {
 // node_modules/whatwg-mimetype/lib/mime-type.js
 var require_mime_type = __commonJS((exports, module) => {
   var MIMETypeParameters = require_mime_type_parameters();
-  var parse7 = require_parser();
+  var parse8 = require_parser();
   var serialize3 = require_serializer();
   var {
     asciiLowercase,
@@ -4086,7 +4086,7 @@ var require_mime_type = __commonJS((exports, module) => {
   module.exports = class MIMEType {
     constructor(string) {
       string = String(string);
-      const result = parse7(string);
+      const result = parse8(string);
       if (result === null) {
         throw new Error(`Could not parse MIME type string "${string}"`);
       }
@@ -5499,9 +5499,9 @@ var init_HowToTip = __esm(() => {
 
 // server/index.ts
 import { execFile as execFile5 } from "child_process";
-import { realpath as realpath3, rm, stat as stat10 } from "fs/promises";
+import { realpath as realpath3, rm as rm2, stat as stat10 } from "fs/promises";
 import { homedir as homedir2 } from "os";
-import { basename as basename5, join as join11, relative as relative4 } from "path";
+import { basename as basename5, join as join12, relative as relative4 } from "path";
 import { promisify as promisify5 } from "util";
 
 // node_modules/hono/dist/compose.js
@@ -7652,9 +7652,10 @@ async function readEnvValues(repoPath, fileName) {
 }
 
 // server/files.ts
-import { stat as stat4, writeFile } from "fs/promises";
-import { basename as basename2, resolve } from "path";
+import { rename, rm, stat as stat4, writeFile } from "fs/promises";
+import { basename as basename2, dirname, extname, join as join5, parse as parse2, resolve } from "path";
 var MAX_WRITE_BYTES = 64 * 1024 * 1024;
+var REPLACEABLE_EXTENSIONS = new Set([".svg"]);
 function decodeBase64(dataBase64) {
   try {
     const bytes = Buffer.from(dataBase64, "base64");
@@ -7743,6 +7744,47 @@ async function writeBatchFiles(input) {
     }
   }
   return { ok: true, written };
+}
+async function replaceFileInPlace(input) {
+  const targetPath = resolve(input.path);
+  const extension = extname(targetPath).toLowerCase();
+  if (!REPLACEABLE_EXTENSIONS.has(extension)) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Only ${Array.from(REPLACEABLE_EXTENSIONS).join(", ")} files can be replaced in place`
+    };
+  }
+  let inputSize;
+  try {
+    const st = await stat4(targetPath);
+    if (!st.isFile()) {
+      return { ok: false, status: 400, error: "Target path is not a file" };
+    }
+    inputSize = st.size;
+  } catch {
+    return { ok: false, status: 400, error: "Target file does not exist" };
+  }
+  const bytes = decodeBase64(input.dataBase64);
+  if (!bytes) {
+    return { ok: false, status: 400, error: "Missing or invalid file data" };
+  }
+  if (bytes.length > MAX_WRITE_BYTES) {
+    return { ok: false, status: 413, error: "Output file is too large" };
+  }
+  const parsed = parse2(targetPath);
+  const tempPath = join5(dirname(targetPath), `.${parsed.name}.orbit-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}${parsed.ext}`);
+  try {
+    await writeFile(tempPath, bytes);
+    await rename(tempPath, targetPath);
+    return { ok: true, outputPath: targetPath, inputSize, outputSize: bytes.length };
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(() => {
+      return;
+    });
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, status: 500, error: message };
+  }
 }
 
 // server/ssl.ts
@@ -11191,7 +11233,7 @@ function isQuote(c) {
 function isWhitespace2(c) {
   return c === 32 || c === 9 || c === 10 || c === 12 || c === 13;
 }
-function parse2(selector) {
+function parse3(selector) {
   const subselects = [];
   const endIndex = parseSelector(subselects, `${selector}`, 0);
   if (endIndex < selector.length) {
@@ -11729,7 +11771,7 @@ var attributeRules = {
 var whitespace = new Set([9, 10, 12, 13, 32]);
 var ZERO = 48;
 var NINE = 57;
-function parse3(formula) {
+function parse4(formula) {
   formula = formula.trim().toLowerCase();
   if (formula === "even") {
     return [2, 0];
@@ -11802,7 +11844,7 @@ function compile(parsed) {
 
 // node_modules/nth-check/lib/esm/index.js
 function nthCheck(formula) {
-  return compile(parse3(formula));
+  return compile(parse4(formula));
 }
 
 // node_modules/css-select/lib/esm/pseudo-selectors/filters.js
@@ -12110,7 +12152,7 @@ function compilePseudoSelector(next, selector, options, context, compileToken) {
     if (data2 != null) {
       throw new Error(`Pseudo ${name} doesn't have any arguments`);
     }
-    const alias = parse2(stringPseudo);
+    const alias = parse3(stringPseudo);
     return subselects["is"](next, alias, options, context, compileToken);
   }
   if (typeof userPseudo === "function") {
@@ -12266,7 +12308,7 @@ function compile2(selector, options, context) {
   return ensureIsTag(next, options.adapter);
 }
 function compileUnsafe(selector, options, context) {
-  const token = typeof selector === "string" ? parse2(selector) : selector;
+  const token = typeof selector === "string" ? parse3(selector) : selector;
   return compileToken(token, options, context);
 }
 function includesScopePseudo(t) {
@@ -12468,7 +12510,7 @@ function is2(element, selector, options = {}) {
 function some(elements, selector, options = {}) {
   if (typeof selector === "function")
     return elements.some(selector);
-  const [plain, filtered] = groupSelectors(parse2(selector));
+  const [plain, filtered] = groupSelectors(parse3(selector));
   return plain.length > 0 && elements.some(_compileToken(plain, options)) || filtered.some((sel) => filterBySelector(sel, elements, options).length > 0);
 }
 function filterByPosition(filter2, elems, data2, options) {
@@ -12495,7 +12537,7 @@ function filterByPosition(filter2, elems, data2, options) {
   }
 }
 function filter2(selector, elements, options = {}) {
-  return filterParsed(parse2(selector), elements, options);
+  return filterParsed(parse3(selector), elements, options);
 }
 function filterParsed(selector, elements, options) {
   if (elements.length === 0)
@@ -12544,7 +12586,7 @@ function select(selector, root2, options = {}, limit = Infinity) {
   if (typeof selector === "function") {
     return find2(root2, selector);
   }
-  const [plain, filtered] = groupSelectors(parse2(selector));
+  const [plain, filtered] = groupSelectors(parse3(selector));
   const results = filtered.map((sel) => findFilterElements(root2, sel, options, true, limit));
   if (plain.length) {
     results.push(findElements(root2, plain, options, limit));
@@ -13289,7 +13331,7 @@ function setCss(el, prop2, value, idx) {
 function getCss(el, prop2) {
   if (!el || !isTag2(el))
     return;
-  const styles = parse4(el.attribs["style"]);
+  const styles = parse5(el.attribs["style"]);
   if (typeof prop2 === "string") {
     return styles[prop2];
   }
@@ -13307,7 +13349,7 @@ function getCss(el, prop2) {
 function stringify2(obj) {
   return Object.keys(obj).reduce((str, prop2) => `${str}${str ? " " : ""}${prop2}: ${obj[prop2]};`, "");
 }
-function parse4(styles) {
+function parse5(styles) {
   styles = (styles || "").trim();
   if (!styles)
     return {};
@@ -13415,13 +13457,13 @@ Cheerio.prototype[Symbol.iterator] = Array.prototype[Symbol.iterator];
 Object.assign(Cheerio.prototype, exports_attributes, exports_traversing, exports_manipulation, exports_css, exports_forms, exports_extract);
 
 // node_modules/cheerio/dist/esm/load.js
-function getLoad(parse5, render3) {
+function getLoad(parse6, render3) {
   return function load(content, options, isDocument2 = true) {
     if (content == null) {
       throw new Error("cheerio.load() expects a string");
     }
     const internalOpts = flattenOptions(options);
-    const initialRoot = parse5(content, internalOpts, isDocument2, null);
+    const initialRoot = parse6(content, internalOpts, isDocument2, null);
 
     class LoadedCheerio extends Cheerio {
       _make(selector, context) {
@@ -13430,7 +13472,7 @@ function getLoad(parse5, render3) {
         return cheerio;
       }
       _parse(content2, options2, isDocument3, context) {
-        return parse5(content2, options2, isDocument3, context);
+        return parse6(content2, options2, isDocument3, context);
       }
       _render(dom) {
         return render3(dom, this.options);
@@ -13440,13 +13482,13 @@ function getLoad(parse5, render3) {
       if (selector && isCheerio(selector))
         return selector;
       const options2 = flattenOptions(opts, internalOpts);
-      const r = typeof root2 === "string" ? [parse5(root2, options2, false, null)] : ("length" in root2) ? root2 : [root2];
+      const r = typeof root2 === "string" ? [parse6(root2, options2, false, null)] : ("length" in root2) ? root2 : [root2];
       const rootInstance = isCheerio(r) ? r : new LoadedCheerio(r, null, options2);
       rootInstance._root = rootInstance;
       if (!selector) {
         return new LoadedCheerio(undefined, rootInstance, options2);
       }
-      const elements = typeof selector === "string" && isHtml(selector) ? parse5(selector, options2, false, null).children : isNode(selector) ? [selector] : Array.isArray(selector) ? selector : undefined;
+      const elements = typeof selector === "string" && isHtml(selector) ? parse6(selector, options2, false, null).children : isNode(selector) ? [selector] : Array.isArray(selector) ? selector : undefined;
       const instance = new LoadedCheerio(elements, rootInstance, options2);
       if (elements) {
         return instance;
@@ -13455,7 +13497,7 @@ function getLoad(parse5, render3) {
         throw new TypeError("Unexpected type of selector");
       }
       let search = selector;
-      const searchContext = context ? typeof context === "string" ? isHtml(context) ? new LoadedCheerio([parse5(context, options2, false, null)], rootInstance, options2) : (search = `${context} ${search}`, rootInstance) : isCheerio(context) ? context : new LoadedCheerio(Array.isArray(context) ? context : [context], rootInstance, options2) : rootInstance;
+      const searchContext = context ? typeof context === "string" ? isHtml(context) ? new LoadedCheerio([parse6(context, options2, false, null)], rootInstance, options2) : (search = `${context} ${search}`, rootInstance) : isCheerio(context) ? context : new LoadedCheerio(Array.isArray(context) ? context : [context], rootInstance, options2) : rootInstance;
       if (!searchContext)
         return instance;
       return searchContext.find(search);
@@ -21092,7 +21134,7 @@ function serializeDocumentTypeNode(node2, { treeAdapter }) {
 }
 
 // node_modules/parse5/dist/index.js
-function parse5(html3, options) {
+function parse6(html3, options) {
   return Parser2.parse(html3, options);
 }
 function parseFragment(fragmentContext, html3, options) {
@@ -21314,7 +21356,7 @@ function parseWithParse5(content, options, isDocument2, context) {
   if (options.scriptingEnabled !== false) {
     options.scriptingEnabled = true;
   }
-  return isDocument2 ? parse5(content, options) : parseFragment(context, content, options);
+  return isDocument2 ? parse6(content, options) : parseFragment(context, content, options);
 }
 var renderOpts = { treeAdapter: adapter };
 function renderWithParse5(dom) {
@@ -21334,8 +21376,8 @@ function renderWithParse5(dom) {
 }
 
 // node_modules/cheerio/dist/esm/load-parse.js
-var parse6 = getParse((content, options, isDocument2, context) => options._useHtmlParser2 ? parseDocument(content, options) : parseWithParse5(content, options, isDocument2, context));
-var load = getLoad(parse6, (dom, options) => options._useHtmlParser2 ? esm_default(dom, options) : renderWithParse5(dom));
+var parse7 = getParse((content, options, isDocument2, context) => options._useHtmlParser2 ? parseDocument(content, options) : parseWithParse5(content, options, isDocument2, context));
+var load = getLoad(parse7, (dom, options) => options._useHtmlParser2 ? esm_default(dom, options) : renderWithParse5(dom));
 // node_modules/encoding-sniffer/dist/esm/index.js
 var import_iconv_lite = __toESM(require_lib(), 1);
 
@@ -21955,9 +21997,9 @@ async function killPortProcess(pid, port) {
 // server/prefs.ts
 import { mkdir, readFile as readFile4, writeFile as writeFile2 } from "fs/promises";
 import { homedir } from "os";
-import { dirname, join as join5 } from "path";
-var CONFIG_DIR = join5(homedir(), ".config", "orbit");
-var CONFIG_PATH = join5(CONFIG_DIR, "config.json");
+import { dirname as dirname2, join as join6 } from "path";
+var CONFIG_DIR = join6(homedir(), ".config", "orbit");
+var CONFIG_PATH = join6(CONFIG_DIR, "config.json");
 var defaultPreferences = () => ({
   pinnedPaths: [],
   recent: [],
@@ -22027,13 +22069,13 @@ async function readPreferences() {
   }
 }
 async function writePreferences(prefs) {
-  await mkdir(dirname(CONFIG_PATH), { recursive: true });
+  await mkdir(dirname2(CONFIG_PATH), { recursive: true });
   await writeFile2(CONFIG_PATH, JSON.stringify(prefs, null, 2), "utf8");
 }
 
 // server/readme.ts
 import { readdir as readdir2, readFile as readFile5, realpath as realpath2, stat as stat6 } from "fs/promises";
-import { join as join6, relative as relative2 } from "path";
+import { join as join7, relative as relative2 } from "path";
 var README_NAMES = ["readme.md", "readme.markdown", "readme"];
 var MAX_README_BYTES = 500 * 1024;
 async function readRepoReadme(repoDir) {
@@ -22047,7 +22089,7 @@ async function readRepoReadme(repoDir) {
   if (!fileName) {
     return { ok: false, status: 404, error: "No README found" };
   }
-  const readmePath = join6(repoDir, fileName);
+  const readmePath = join7(repoDir, fileName);
   let realFile;
   try {
     realFile = await realpath2(readmePath);
@@ -22464,7 +22506,7 @@ async function validateRobots(target) {
 // server/scan.ts
 import { execFile as execFile4 } from "child_process";
 import { readdir as readdir3, stat as stat7 } from "fs/promises";
-import { join as join8 } from "path";
+import { join as join9 } from "path";
 import { promisify as promisify4 } from "util";
 
 // server/git.ts
@@ -22588,12 +22630,12 @@ async function getGitMeta(repoPath) {
 
 // server/stack.ts
 import { readFile as readFile6 } from "fs/promises";
-import { join as join7 } from "path";
+import { join as join8 } from "path";
 async function detectStack(repoPath) {
   const tags = new Set;
   const tryRead = async (name) => {
     try {
-      return await readFile6(join7(repoPath, name), "utf8");
+      return await readFile6(join8(repoPath, name), "utf8");
     } catch {
       return null;
     }
@@ -22684,7 +22726,7 @@ async function getRepoDiskMetrics(topLevelPath) {
   const workingTreeBytes = await getDirectorySizeBytes(topLevelPath);
   let nodeModulesBytes = null;
   try {
-    const nodeModulesPath = join8(topLevelPath, "node_modules");
+    const nodeModulesPath = join9(topLevelPath, "node_modules");
     const st = await stat7(nodeModulesPath);
     if (st.isDirectory()) {
       nodeModulesBytes = await getDirectorySizeBytes(nodeModulesPath);
@@ -22718,7 +22760,7 @@ async function collectGitRoots(dir, depth, acc) {
       continue;
     if (SKIP_DIR_NAMES.has(ent.name))
       continue;
-    await collectGitRoots(join8(dir, ent.name), depth + 1, acc);
+    await collectGitRoots(join9(dir, ent.name), depth + 1, acc);
   }
 }
 function poolMap(items, limit, fn) {
@@ -22808,7 +22850,7 @@ async function scanRepos(scanRoot, orbitLibraryId = "primary") {
 
 // server/search.ts
 import { readdir as readdir4, readFile as readFile7, stat as stat8 } from "fs/promises";
-import { basename as basename4, join as join9, relative as relative3 } from "path";
+import { basename as basename4, join as join10, relative as relative3 } from "path";
 var MAX_FILE_BYTES = 1024 * 1024;
 var MAX_TOTAL_MATCHES = 500;
 var MAX_MATCHES_PER_FILE = 20;
@@ -22850,9 +22892,9 @@ async function collectFiles(dir, depth, acc, deadline) {
     if (entry.isDirectory()) {
       if (SKIP_DIR_NAMES.has(entry.name))
         continue;
-      await collectFiles(join9(dir, entry.name), depth + 1, acc, deadline);
+      await collectFiles(join10(dir, entry.name), depth + 1, acc, deadline);
     } else if (entry.isFile() && !shouldSkipFile(entry.name)) {
-      acc.push(join9(dir, entry.name));
+      acc.push(join10(dir, entry.name));
     }
   }
 }
@@ -24233,8 +24275,8 @@ async function runSchemaViewerValidation(input) {
 }
 
 // server/tinify.ts
-import { readFile as readFile8, rename, stat as stat9, writeFile as writeFile3 } from "fs/promises";
-import { dirname as dirname2, extname, join as join10, parse as parse7, resolve as resolve3 } from "path";
+import { readFile as readFile8, rename as rename2, stat as stat9, writeFile as writeFile3 } from "fs/promises";
+import { dirname as dirname3, extname as extname2, join as join11, parse as parse8, resolve as resolve3 } from "path";
 var TINIFY_SHRINK_URL = "https://api.tinify.com/shrink";
 var ALLOWED_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"]);
 var MAX_CONCURRENCY = 3;
@@ -24264,15 +24306,15 @@ async function writeOutputFile(outputBytes, originalPath, replaceOriginal) {
     await writeFile3(outputPath, outputBytes);
     return outputPath;
   }
-  const tempPath = join10(dirname2(originalPath), `.${parse7(originalPath).name}.tinify-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}${parse7(originalPath).ext}`);
+  const tempPath = join11(dirname3(originalPath), `.${parse8(originalPath).name}.tinify-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}${parse8(originalPath).ext}`);
   await writeFile3(tempPath, outputBytes);
-  await rename(tempPath, originalPath);
+  await rename2(tempPath, originalPath);
   return originalPath;
 }
 async function tinifySinglePath(apiKey, path, replaceOriginal) {
   try {
     const resolvedPath = resolve3(path);
-    const extension = extname(resolvedPath).toLowerCase();
+    const extension = extname2(resolvedPath).toLowerCase();
     if (!ALLOWED_EXTENSIONS.has(extension)) {
       return { path, error: "Only PNG and JPG images are supported." };
     }
@@ -24377,13 +24419,13 @@ var PORT = (() => {
   return Number.isFinite(n) && n > 0 ? n : 8788;
 })();
 function defaultScanRoot() {
-  return process.env.ORBIT_SCAN_ROOT ?? join11(homedir2(), "Sites");
+  return process.env.ORBIT_SCAN_ROOT ?? join12(homedir2(), "Sites");
 }
 function expandHomePath(pathValue) {
   if (pathValue === "~")
     return homedir2();
   if (pathValue.startsWith("~/")) {
-    return join11(homedir2(), pathValue.slice(2));
+    return join12(homedir2(), pathValue.slice(2));
   }
   return pathValue;
 }
@@ -24641,7 +24683,7 @@ app.post("/api/repo/delete-node-modules", async (c) => {
     const message = e instanceof Error ? e.message : String(e);
     return c.json({ error: message }, 400);
   }
-  const nodeModulesPath = join11(safeRepo, "node_modules");
+  const nodeModulesPath = join12(safeRepo, "node_modules");
   let resolvedNm;
   try {
     resolvedNm = await realpath3(nodeModulesPath);
@@ -24660,7 +24702,7 @@ app.post("/api/repo/delete-node-modules", async (c) => {
     if (!st.isDirectory()) {
       return c.json({ error: "node_modules is not a directory" }, 400);
     }
-    await rm(resolvedNm, { recursive: true, force: true });
+    await rm2(resolvedNm, { recursive: true, force: true });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return c.json({ error: message }, 500);
@@ -24819,6 +24861,26 @@ app.post("/api/files/write-batch", async (c) => {
     return c.json({ error: result.error }, result.status);
   }
   return c.json({ written: result.written });
+});
+app.post("/api/files/replace", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  const path = body.path;
+  const dataBase64 = body.dataBase64;
+  if (typeof path !== "string" || path.length === 0 || typeof dataBase64 !== "string") {
+    return c.json({ error: "path and dataBase64 are required" }, 400);
+  }
+  const result = await replaceFileInPlace({ path, dataBase64 });
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status);
+  }
+  return c.json({
+    outputPath: result.outputPath,
+    inputSize: result.inputSize,
+    outputSize: result.outputSize
+  });
 });
 app.get("/api/env/files", async (c) => {
   const pathStr = c.req.query("path");

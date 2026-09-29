@@ -509,6 +509,47 @@ export async function writeDerivedFile(input: {
   return data.outputPath
 }
 
+export type ReplaceFileResult = {
+  outputPath: string
+  inputSize: number
+  outputSize: number
+}
+
+/**
+ * Overwrites a user-picked local file in place (atomic temp + rename).
+ * The server only accepts a small allowlist of text extensions (e.g. .svg).
+ */
+export async function replaceFileContents(
+  path: string,
+  dataBase64: string,
+): Promise<ReplaceFileResult> {
+  const res = await fetch("/api/files/replace", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, dataBase64 }),
+  })
+  const text = await res.text()
+  const data = parseResponseBody(text) as Partial<ReplaceFileResult> & {
+    error?: string
+  }
+  if (
+    !res.ok ||
+    typeof data.outputPath !== "string" ||
+    typeof data.inputSize !== "number" ||
+    typeof data.outputSize !== "number"
+  ) {
+    throw new Error(
+      (typeof data.error === "string" ? data.error : null) ??
+        "Could not replace file",
+    )
+  }
+  return {
+    outputPath: data.outputPath,
+    inputSize: data.inputSize,
+    outputSize: data.outputSize,
+  }
+}
+
 /**
  * Writes a set of named files into a user-picked directory.
  */
