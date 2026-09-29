@@ -47,7 +47,7 @@ export function RobotsPage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Robots & sitemap"
         description="Fetch robots.txt, parse its rules, and validate every referenced sitemap."

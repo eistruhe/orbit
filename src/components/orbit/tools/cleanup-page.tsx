@@ -75,7 +75,7 @@ export function CleanupPage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Cleanup node_modules"
         description="Every scanned project across all libraries, ranked by node_modules size × time since last commit. Deselect anything you are actively working on."

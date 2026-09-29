@@ -197,7 +197,7 @@ export function DepsPage() {
   )
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Dependency audit"
         description="Compare package.json ranges against the npm registry — per project or across every scanned project."

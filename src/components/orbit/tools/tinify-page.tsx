@@ -3,11 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { DropZone } from "@/components/orbit/drop-zone"
+import { ToolSection } from "@/components/orbit/tools/tool-section"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
 import { formatBytes } from "@/lib/format-size"
 import { tinifyPaths, type TinifyResult } from "@/lib/api"
-import { cn } from "@/lib/utils"
 
 const ACCEPTED_EXTENSIONS = [".png", ".jpg", ".jpeg"]
 
@@ -54,33 +54,6 @@ type CompressionRow = {
   outputSize?: number
   error?: string
   status: CompressionStatus
-}
-
-type SectionProps = {
-  title: string
-  description?: string
-  trailing?: React.ReactNode
-  children: React.ReactNode
-  className?: string
-}
-
-function Section({ title, description, trailing, children, className }: SectionProps) {
-  return (
-    <section className={cn("border border-border bg-card", className)}>
-      <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <div className="flex flex-col gap-0.5">
-          <h3 className="text-[10px] uppercase tracking-[0.16em] text-foreground">
-            [{title}]
-          </h3>
-          {description ? (
-            <p className="text-[11px] text-muted-foreground">{description}</p>
-          ) : null}
-        </div>
-        {trailing}
-      </header>
-      <div className="p-3">{children}</div>
-    </section>
-  )
 }
 
 export function TinifyPage() {
@@ -196,14 +169,13 @@ export function TinifyPage() {
 
   return (
     <div className="space-y-4">
-      <Section
+      <ToolSection
         title="Image compression"
         description={
           supportsDesktopFileBridge
             ? "Drop or pick PNG/JPG files. Compression starts immediately."
             : "Open Orbit desktop to enable drag-and-drop local file compression."
         }
-        className="max-w-5xl"
         trailing={
           busy ? (
             <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
@@ -279,12 +251,11 @@ export function TinifyPage() {
             </p>
           ) : null}
         </div>
-      </Section>
+      </ToolSection>
 
       {rows.length > 0 ? (
-        <Section
+        <ToolSection
           title="Results"
-          className="max-w-5xl"
           trailing={
             <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
               Saved{" "}
@@ -367,7 +338,7 @@ export function TinifyPage() {
               </tbody>
             </table>
           </div>
-        </Section>
+        </ToolSection>
       ) : null}
     </div>
   )

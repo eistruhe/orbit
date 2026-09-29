@@ -2,6 +2,7 @@ import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router"
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+import { AppBackdrop } from "@/components/orbit/app-backdrop"
 import { CommandPalette } from "@/components/orbit/command-palette"
 import { MetadataDialog } from "@/components/orbit/metadata-dialog"
 import {
@@ -617,7 +618,9 @@ export function OrbitApp() {
   return (
     <OrbitContext.Provider value={contextValue}>
       <TooltipProvider delay={200}>
-        <div className="relative flex min-h-svh items-start bg-background bg-shell-gradient text-foreground">
+        {/* `isolate` keeps the -z-10 backdrop above the shell's own background. */}
+        <div className="relative isolate flex min-h-svh items-start bg-background bg-shell-gradient text-foreground">
+          <AppBackdrop />
           {actionFeedback ? (
             <span
               role="status"

@@ -101,7 +101,6 @@ export function SchemaViewerPage() {
       <ToolSection
         title="Schema viewer"
         description="Paste a URL or schema markup and validate extracted JSON-LD, Microdata, and RDFa."
-        className="max-w-5xl"
         trailing={
           loading ? (
             <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
@@ -178,7 +177,7 @@ export function SchemaViewerPage() {
 
       {result ? (
         <>
-          <ToolSection title="Summary" className="max-w-5xl">
+          <ToolSection title="Summary">
             <div className="grid gap-2 sm:grid-cols-4">
               <div className="border border-border px-2 py-2 text-[11px]">
                 <p className="text-muted-foreground">Schemas found</p>
@@ -228,7 +227,7 @@ export function SchemaViewerPage() {
             ) : null}
           </ToolSection>
 
-          <ToolSection title="Validation issues" className="max-w-5xl">
+          <ToolSection title="Validation issues">
             {result.issues.length === 0 ? (
               <p className="text-[11px] text-muted-foreground">
                 No validation issues returned.
@@ -273,7 +272,7 @@ export function SchemaViewerPage() {
             )}
           </ToolSection>
 
-          <ToolSection title="Extracted schemas" className="max-w-5xl">
+          <ToolSection title="Extracted schemas">
             {result.extractedSchemas.length === 0 ? (
               <p className="text-[11px] text-muted-foreground">
                 No schema objects were extracted from this input.

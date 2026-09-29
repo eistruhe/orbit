@@ -247,7 +247,7 @@ export function FaviconPage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Favicon generator"
         description="One SVG or PNG in — favicon.ico, touch icons, web manifest, and link tags out."

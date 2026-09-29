@@ -161,7 +161,7 @@ export function QrPage() {
   )
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="QR code"
         description="Generate QR codes for links, Wi-Fi access, or contact cards — exported as SVG or PNG."

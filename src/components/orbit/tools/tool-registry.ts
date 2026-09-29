@@ -30,6 +30,8 @@ import {
   Type,
 } from "lucide-react"
 
+import type { ContentWidth } from "@/components/orbit/content-frame"
+
 export const TOOL_CATEGORIES = [
   { id: "images", label: "Images & assets" },
   { id: "css", label: "CSS & design" },
@@ -78,6 +80,8 @@ export type ToolMeta = {
   description: string
   icon: React.ComponentType<{ className?: string }>
   category: ToolCategoryId
+  /** Content column width; defaults to `default`. */
+  width?: ContentWidth
 }
 
 const TOOL_ENTRIES: ToolMeta[] = [
@@ -124,6 +128,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
       "Inspect CSV/TSV from file or clipboard: delimiter, search, sorting, column stats.",
     category: "data",
     icon: Table2,
+    width: "wide",
   },
   {
     id: "deps",
@@ -133,6 +138,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
       "Find outdated npm dependencies across one or all scanned projects.",
     category: "projects",
     icon: Blocks,
+    width: "wide",
   },
   {
     id: "env-compare",
@@ -169,6 +175,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
       "Inspect, format, and search JSON; copy node paths and generate TypeScript types.",
     category: "data",
     icon: FileJson2,
+    width: "wide",
   },
   {
     id: "qr",
@@ -258,6 +265,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
     description: "Optimize one or many SVG files with SVGO settings.",
     category: "images",
     icon: FileCode2,
+    width: "wide",
   },
   {
     id: "px-to-rem",
@@ -303,6 +311,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
       "Compare two texts or code snippets with a split or unified diff view.",
     category: "data",
     icon: GitCompareArrows,
+    width: "wide",
   },
   {
     id: "seo-audit",
@@ -339,6 +348,7 @@ const TOOL_ENTRIES: ToolMeta[] = [
       "Inspect and validate JSON-LD, Microdata, and RDFa from URLs or snippets.",
     category: "seo",
     icon: FileSearch2,
+    width: "wide",
   },
 ]
 

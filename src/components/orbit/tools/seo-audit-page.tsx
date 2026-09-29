@@ -163,7 +163,6 @@ export function SeoAuditPage() {
       <ToolSection
         title="SEO audit"
         description="Audit a URL: SEO checks, headings, links, page weight, and social previews."
-        className="max-w-4xl"
         trailing={
           loading ? (
             <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
@@ -196,7 +195,6 @@ export function SeoAuditPage() {
       {audit ? (
         <ToolSection
           title="Checks"
-          className="max-w-4xl"
           trailing={
             <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground tabular-nums">
               {audit.checks.filter((c) => c.status === "pass").length}/
@@ -233,7 +231,7 @@ export function SeoAuditPage() {
       ) : null}
 
       {audit ? (
-        <div className="grid max-w-4xl gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard label="Title tag">
             {audit.title.text ?? (
               <span className="text-muted-foreground">Missing</span>
@@ -261,7 +259,7 @@ export function SeoAuditPage() {
       ) : null}
 
       {audit && audit.headings.structure.length > 0 ? (
-        <ToolSection title="Heading structure" className="max-w-4xl">
+        <ToolSection title="Heading structure">
           <ul className="space-y-1">
             {audit.headings.structure.map((heading, index) => (
               <li
@@ -287,7 +285,7 @@ export function SeoAuditPage() {
       ) : null}
 
       {audit ? (
-        <div className="grid max-w-4xl gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
           <ToolSection title="Links overview">
             <div className="space-y-1.5">
               <DataLine label="Internal">{audit.links.internal}</DataLine>
@@ -315,7 +313,7 @@ export function SeoAuditPage() {
       ) : null}
 
       {og ? (
-        <ToolSection title="Social preview" className="max-w-4xl">
+        <ToolSection title="Social preview">
           <article className="max-w-xl border border-border bg-surface">
             {og.image ? (
               <img
@@ -350,7 +348,6 @@ export function SeoAuditPage() {
         <ToolSection
           title="Raw meta tags"
           description="Open Graph, Twitter, and other meta tags found on the page."
-          className="max-w-4xl"
           trailing={
             <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground tabular-nums">
               {og.raw.length}

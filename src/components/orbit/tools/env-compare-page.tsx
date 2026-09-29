@@ -153,7 +153,7 @@ export function EnvComparePage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Env compare"
         description="Compare .env files of a project by key — values stay hidden unless you reveal them per row."

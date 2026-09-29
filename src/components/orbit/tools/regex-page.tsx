@@ -149,7 +149,7 @@ export function RegexPage() {
   }, [matches, testText])
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Regex tester"
         description="Test JavaScript regular expressions with live highlighting, groups, and replace preview."

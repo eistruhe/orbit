@@ -1,5 +1,7 @@
 import { Outlet } from "@tanstack/react-router"
 
+import { ContentFrame } from "@/components/orbit/content-frame"
+
 export function SettingsLayout() {
   return (
     <>
@@ -14,9 +16,9 @@ export function SettingsLayout() {
         </span>
       </header>
 
-      <div className="flex flex-1 flex-col gap-6 px-3 py-6">
+      <ContentFrame>
         <Outlet />
-      </div>
+      </ContentFrame>
     </>
   )
 }

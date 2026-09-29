@@ -117,7 +117,7 @@ export function StringsPage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="String utils"
         description="Slug, case conversions (with ä→ae transliteration), and text counts — all live."

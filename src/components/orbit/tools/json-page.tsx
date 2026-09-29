@@ -397,7 +397,7 @@ export function JsonPage() {
   const baseName = sourceName?.replace(/\.[^.]+$/, "") || "data"
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="JSON viewer"
         description="Inspect, format, search, and convert JSON to TypeScript — from file, clipboard, or typed input."
@@ -562,7 +562,7 @@ export function JsonPage() {
           {view === "tree" ? (
             hits ? (
               <div className="max-h-[60vh] overflow-auto border border-border">
-                <div className="sticky top-0 border-b border-border bg-card px-2.5 py-1.5 font-mono text-[10px] tabular-nums text-muted-foreground">
+                <div className="sticky top-0 border-b border-border bg-card px-2.5 py-1.5 backdrop-blur-md font-mono text-[10px] tabular-nums text-muted-foreground">
                   {hits.length}
                   {hits.length >= 500 ? "+" : ""} hits — click a path to copy
                 </div>

@@ -258,7 +258,6 @@ export function SvgoPage() {
       <ToolSection
         title="SVGO"
         description="Optimize one or many SVG files using SVGO settings."
-        className="max-w-6xl"
         trailing={
           <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
             {totalOptimized}/{files.length} optimized

@@ -1,37 +1,22 @@
 import { useEffect, useState } from "react"
 
+import { AppearanceSettings } from "@/components/orbit/appearance-settings"
 import { useOrbit } from "@/components/orbit/orbit-context"
+import { ToolSection } from "@/components/orbit/tools/tool-section"
 import { validateTinifyKey } from "@/lib/api"
 import { ORBIT_APP_VERSION, ORBIT_COPYRIGHT_NOTICE } from "@/lib/orbit-meta"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { ProjectLibrary } from "@/types/repo"
 
-type SectionProps = {
-  title: string
-  description?: string
-  children: React.ReactNode
-  footer?: React.ReactNode
-}
+type SectionProps = React.ComponentProps<typeof ToolSection>
 
-function Section({ title, description, children, footer }: SectionProps) {
+/** ToolSection with vertically spaced settings rows. */
+function Section({ children, ...props }: SectionProps) {
   return (
-    <section className="max-w-3xl border border-border bg-card">
-      <header className="flex flex-col gap-1 border-b border-border px-3 py-2">
-        <h3 className="text-[10px] uppercase tracking-[0.16em] text-foreground">
-          [{title}]
-        </h3>
-        {description ? (
-          <p className="text-[11px] text-muted-foreground">{description}</p>
-        ) : null}
-      </header>
-      <div className="space-y-3 p-3">{children}</div>
-      {footer ? (
-        <footer className="flex items-center justify-end gap-2 border-t border-border px-3 py-2">
-          {footer}
-        </footer>
-      ) : null}
-    </section>
+    <ToolSection {...props}>
+      <div className="space-y-3">{children}</div>
+    </ToolSection>
   )
 }
 
@@ -303,7 +288,7 @@ export function SettingsPage() {
         ) : null}
       </Section>
 
-      <div className="max-w-3xl flex justify-end">
+      <div className="flex justify-end">
         <Button
           type="button"
           variant="highlight"
@@ -314,6 +299,8 @@ export function SettingsPage() {
           {saving ? "Saving…" : "Save settings"}
         </Button>
       </div>
+
+      <AppearanceSettings />
 
       <Section
         title="Copyright"

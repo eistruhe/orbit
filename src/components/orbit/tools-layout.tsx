@@ -2,6 +2,7 @@ import { Pin } from "lucide-react"
 import { Outlet, useMatchRoute } from "@tanstack/react-router"
 import { useEffect } from "react"
 
+import { ContentFrame } from "@/components/orbit/content-frame"
 import { TOOLS } from "@/components/orbit/tools/tool-registry"
 import {
   recordToolVisit,
@@ -62,9 +63,10 @@ export function ToolsLayout() {
         )}
       </header>
 
-      <div className="flex flex-1 flex-col gap-6 px-3 py-6">
+      {/* The hub grid uses the wide column; tools opt in via the registry. */}
+      <ContentFrame width={activeTool ? (activeTool.width ?? "default") : "wide"}>
         <Outlet />
-      </div>
+      </ContentFrame>
     </>
   )
 }

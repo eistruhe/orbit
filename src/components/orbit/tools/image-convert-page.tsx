@@ -193,7 +193,7 @@ export function ImageConvertPage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Image converter"
         description="Convert PNG/JPG/WebP to WebP or AVIF locally — no API, optional multi-width srcset."

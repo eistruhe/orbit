@@ -4,17 +4,19 @@ type ToolSectionProps = {
   title: string
   description?: string
   trailing?: React.ReactNode
+  footer?: React.ReactNode
   children: React.ReactNode
   className?: string
 }
 
 /**
- * Bordered section with mono header used by tool pages.
+ * Bordered section with mono header used by tool pages and settings.
  */
 export function ToolSection({
   title,
   description,
   trailing,
+  footer,
   children,
   className,
 }: ToolSectionProps) {
@@ -32,6 +34,11 @@ export function ToolSection({
         {trailing}
       </header>
       <div className="p-3">{children}</div>
+      {footer ? (
+        <footer className="flex items-center justify-end gap-2 border-t border-border px-3 py-2">
+          {footer}
+        </footer>
+      ) : null}
     </section>
   )
 }

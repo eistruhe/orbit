@@ -244,7 +244,7 @@ export function EncodePage() {
   )
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Encoder / decoder"
         description="Base64, URL escaping, HTML entities, and JWT inspection — nothing leaves your machine."

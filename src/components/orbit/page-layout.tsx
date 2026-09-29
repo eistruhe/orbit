@@ -1,15 +1,18 @@
 import { Outlet } from "@tanstack/react-router"
 
+import { ContentFrame, type ContentWidth } from "@/components/orbit/content-frame"
+
 type PageLayoutProps = {
   title: string
   subtitle: string
+  width?: ContentWidth
 }
 
 /**
  * Minimal header + content layout for standalone top-level pages
  * (Ports, Search). Mirrors SettingsLayout/ToolsLayout styling.
  */
-export function PageLayout({ title, subtitle }: PageLayoutProps) {
+export function PageLayout({ title, subtitle, width = "wide" }: PageLayoutProps) {
   return (
     <>
       <header className="app-drag sticky top-0 z-20 flex h-12 items-center gap-3 border-b border-border bg-sidebar/85 px-3 backdrop-blur-md">
@@ -23,9 +26,9 @@ export function PageLayout({ title, subtitle }: PageLayoutProps) {
         </span>
       </header>
 
-      <div className="flex flex-1 flex-col gap-6 px-3 py-6">
+      <ContentFrame width={width}>
         <Outlet />
-      </div>
+      </ContentFrame>
     </>
   )
 }

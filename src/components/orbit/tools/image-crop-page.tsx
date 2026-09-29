@@ -297,7 +297,7 @@ export function ImageCropPage() {
   const hasCrop = Boolean(outputSize)
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Image cropper"
         description="Crop interactively with resize handles — fixed ratios, free form, or a circular mask. Rotate and flip before cropping."

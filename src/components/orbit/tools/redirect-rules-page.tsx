@@ -181,7 +181,7 @@ export function RedirectRulesPage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Redirect rules"
         description="Collect old → new URL mappings and export them for Apache, nginx, Vercel, or Netlify/Cloudflare."

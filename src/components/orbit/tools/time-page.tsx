@@ -279,7 +279,7 @@ export function TimePage() {
   ]
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Timestamp & cron"
         description="Convert between Unix timestamps, ISO 8601, and time zones — or explain a cron expression."

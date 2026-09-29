@@ -106,7 +106,7 @@ export function SerpPage() {
     "The meta description appears here. Around 155 characters usually fit before Google truncates with an ellipsis."
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="SERP preview"
         description="Preview a Google result snippet and check title/description pixel widths — limits are approximations."

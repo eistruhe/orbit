@@ -62,11 +62,14 @@
   --radius: 0px;
   --highlight: #FF6B1A;
   --highlight-foreground: #ffffff;
+  /* Panel opacity for tinted/frosted surfaces; set on <html> by lib/appearance. */
+  --panel-alpha: 1;
+  --panel-blur: 16px;
   --background: oklch(0.985 0 0);
-  --surface: oklch(1 0 0);
-  --surface-2: oklch(0.965 0 0);
+  --surface: oklch(1 0 0 / var(--panel-alpha));
+  --surface-2: oklch(0.965 0 0 / var(--panel-alpha));
   --foreground: oklch(0.16 0 0);
-  --card: oklch(1 0 0);
+  --card: oklch(1 0 0 / var(--panel-alpha));
   --card-foreground: oklch(0.16 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.16 0 0);
@@ -91,7 +94,7 @@
   --chart-3: oklch(0.6 0 0);
   --chart-4: oklch(0.78 0 0);
   --chart-5: oklch(0.88 0 0);
-  --sidebar: oklch(0.97 0 0);
+  --sidebar: oklch(0.97 0 0 / var(--panel-alpha));
   --sidebar-foreground: oklch(0.16 0 0);
   --sidebar-primary: oklch(0.16 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
@@ -108,10 +111,10 @@
   --highlight: #FF6B1A;
   --highlight-foreground: #ffffff;
   --background: oklch(0.115 0 0);
-  --surface: oklch(0.155 0 0);
-  --surface-2: oklch(0.185 0 0);
+  --surface: oklch(0.155 0 0 / var(--panel-alpha));
+  --surface-2: oklch(0.185 0 0 / var(--panel-alpha));
   --foreground: oklch(0.97 0 0);
-  --card: oklch(0.155 0 0);
+  --card: oklch(0.155 0 0 / var(--panel-alpha));
   --card-foreground: oklch(0.97 0 0);
   --popover: oklch(0.155 0 0);
   --popover-foreground: oklch(0.97 0 0);
@@ -137,7 +140,7 @@
   --chart-3: oklch(0.6 0 0);
   --chart-4: oklch(0.4 0 0);
   --chart-5: oklch(0.25 0 0);
-  --sidebar: oklch(0.13 0 0);
+  --sidebar: oklch(0.13 0 0 / var(--panel-alpha));
   --sidebar-foreground: oklch(0.97 0 0);
   --sidebar-primary: oklch(0.97 0 0);
   --sidebar-primary-foreground: oklch(0.115 0 0);
@@ -198,6 +201,54 @@
     background: var(--muted-foreground);
     border: 2px solid transparent;
     background-clip: padding-box;
+  }
+}
+
+@layer components {
+  /* Shared content column (components/orbit/content-frame.tsx). */
+  .content-frame {
+    width: 100%;
+    max-width: 56rem;
+    margin-inline: auto;
+  }
+  .content-frame[data-width="wide"] {
+    max-width: 72rem;
+  }
+  html[data-layout="left"] .content-frame {
+    margin-inline: 0;
+  }
+  html[data-layout="full"] .content-frame {
+    max-width: none;
+  }
+
+  /*
+   * Frosted surfaces: blur only the outermost panels. Nested panels would
+   * re-blur an already blurred backdrop at extra GPU cost for no visual gain.
+   */
+  html[data-surface="frosted"] :is(.bg-card, .bg-sidebar):not(:is(.bg-card, .bg-sidebar) *) {
+    -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(1.15);
+    backdrop-filter: blur(var(--panel-blur)) saturate(1.15);
+  }
+
+  /* Background image layer (components/orbit/app-backdrop.tsx). */
+  .app-backdrop {
+    mask-image: linear-gradient(
+      to bottom,
+      #000 0%,
+      #000 calc(100% - var(--backdrop-fade, 55%)),
+      transparent 100%
+    );
+    opacity: 0;
+    transition: opacity 400ms ease-out;
+  }
+  .app-backdrop[data-ready="true"] {
+    opacity: 1;
+  }
+  .app-backdrop-dim {
+    opacity: var(--backdrop-dim-light, 0.45);
+  }
+  .dark .app-backdrop-dim {
+    opacity: var(--backdrop-dim-dark, 0.25);
   }
 }
 

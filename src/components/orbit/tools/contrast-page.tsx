@@ -82,7 +82,7 @@ export function ContrastPage() {
   const ratio = fg && bg ? contrastRatio(fg.rgb, bg.rgb) : null
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Contrast checker"
         description="WCAG 2.1 contrast ratio for any two CSS colors — hex, rgb(), hsl(), oklch(), named."

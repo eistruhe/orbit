@@ -106,7 +106,6 @@ export function PxToRemPage() {
     <ToolSection
       title="Px ↔ rem converter"
       description="Convert between pixels and rem with a configurable root font size."
-      className="max-w-3xl"
     >
       <div className="grid items-stretch gap-3 sm:grid-cols-[1fr_auto_1fr]">
         <ConverterCard

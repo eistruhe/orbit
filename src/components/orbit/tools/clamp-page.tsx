@@ -98,7 +98,7 @@ export function ClampPage() {
   }, [result])
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="clamp() calculator"
         description="Fluid values that scale between two viewport widths — typography, spacing, anything in px."

@@ -1,6 +1,7 @@
 import { RefreshCw } from "lucide-react"
 import { Outlet } from "@tanstack/react-router"
 
+import { ContentFrame } from "@/components/orbit/content-frame"
 import { useOrbit } from "@/components/orbit/orbit-context"
 import { Button } from "@/components/ui/button"
 import { DotmCircular4 } from "@/components/ui/dotm-circular-4"
@@ -119,7 +120,7 @@ export function ProjectsLayout() {
         </Button>
       </header>
 
-      <div className="flex flex-1 flex-col gap-6 px-3 py-6">
+      <ContentFrame width="wide">
         {error ? (
           <p className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] uppercase tracking-[0.04em] text-destructive">
             {error}
@@ -127,7 +128,7 @@ export function ProjectsLayout() {
         ) : null}
 
         <Outlet />
-      </div>
+      </ContentFrame>
     </>
   )
 }

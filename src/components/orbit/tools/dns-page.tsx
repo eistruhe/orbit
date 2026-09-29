@@ -151,7 +151,7 @@ export function DnsPage() {
     sameRecords(cloudflare.records, google.records)
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="DNS lookup"
         description="Resolve records via DNS-over-HTTPS — Cloudflare and Google are queried in parallel to spot propagation differences."

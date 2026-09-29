@@ -46,7 +46,7 @@ export function RedirectsPage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Redirects & headers"
         description="Trace the redirect chain and check security and caching headers of the final response."

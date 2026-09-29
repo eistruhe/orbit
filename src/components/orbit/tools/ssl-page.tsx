@@ -78,7 +78,7 @@ export function SslPage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="SSL check"
         description="Inspect certificates for a list of domains: expiry, issuer, chain, and SANs. The list is remembered locally."

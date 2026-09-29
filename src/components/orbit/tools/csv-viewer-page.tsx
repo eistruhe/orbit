@@ -527,7 +527,7 @@ export function CsvViewerPage() {
               >
                 <div style={{ minWidth: minTableWidth }}>
                   <div
-                    className="sticky top-0 z-10 grid border-b border-border bg-card"
+                    className="sticky top-0 z-10 grid border-b border-border bg-card backdrop-blur-md"
                     style={{ gridTemplateColumns: gridTemplate }}
                     role="row"
                   >

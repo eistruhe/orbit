@@ -146,7 +146,7 @@ export function ExifPage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="EXIF viewer"
         description="Inspect image metadata (camera, exposure, GPS) and strip it via re-encode — nothing is uploaded."

@@ -169,7 +169,7 @@ export function ColorConvertPage() {
   const isDark = 0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b < 0.45
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <ToolSection
         title="Color converter"
         description="Paste or edit any format — HEX, RGB, HSL, HWB, LAB, LCH, OKLAB, OKLCH, Display-P3, or a named color — and the rest follow."
