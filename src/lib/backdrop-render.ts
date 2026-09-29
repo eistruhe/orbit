@@ -8,9 +8,9 @@ export type BackdropColors = {
   /** Mono ink; light on dark themes, dark on light themes. */
   ink: Rgb
   /**
-   * The app background behind the canvas is light. Density then follows how
-   * dark a pixel is, so what stands out against the page keeps its dots
-   * (dark hair on a light page), mirroring the dark theme.
+   * The app background behind the canvas is light. Mono and duotone ink then
+   * follows how dark a pixel is (ink on a light page). Color effects are
+   * background-independent and only show the page through the fade.
    */
   lightBackground: boolean
 }
@@ -38,6 +38,14 @@ const BAYER_8 = [
   51, 19, 59, 27, 49, 17, 57, 25, 15, 47, 7, 39, 13, 45, 5, 37, 63, 31, 55, 23,
   61, 29, 53, 21,
 ]
+
+/**
+ * "Off" pixels of a color dither and the paper under halftone dots: the
+ * pixel's own hue, nearly black. Keeping them opaque makes the image read
+ * the same on light and dark pages (like Ceron); only the fade reveals the
+ * page.
+ */
+const SHADOW = 0.16
 
 /** Upper bound for full-resolution effects, keeps renders well under 100ms. */
 const MAX_PIXELS = 6_000_000
@@ -198,25 +206,27 @@ function processPixels(
           g = (Math.min(3, Math.floor((g / 255) * 3 + t)) * 255) / 3
           b = (Math.min(3, Math.floor((b / 255) * 3 + t)) * 255) / 3
           data[i + 3] = alpha >= t ? 255 : 0
+        } else if (palette === "color") {
+          // The fade dissolves pixels into the page; tone only picks a lit
+          // (brightened) or shadow (darkened) version of the pixel's color.
+          if (alpha < t) {
+            data[i + 3] = 0
+            continue
+          }
+          const lit = tone(r, g, b, false) >= t
+          const gain = lit ? Math.sqrt(gainFor(r, g, b, tone(r, g, b, false))) : SHADOW
+          r *= gain
+          g *= gain
+          b *= gain
+          data[i + 3] = 255
         } else {
-          // Tone and fade together decide whether the pixel survives.
+          // Ink on the page: tone and fade together decide whether it lands.
           const density = tone(r, g, b, colors.lightBackground) * alpha
           if (density < t) {
             data[i + 3] = 0
             continue
           }
-          if (palette === "color") {
-            // Sparse bright pixels get brightened on dark pages; on light
-            // pages the kept pixels are the dark ones and stay as they are.
-            const gain = colors.lightBackground
-              ? 1
-              : Math.sqrt(gainFor(r, g, b, tone(r, g, b, false)))
-            r *= gain
-            g *= gain
-            b *= gain
-          } else {
-            ;[r, g, b] = palette === "duotone" ? colors.highlight : colors.ink
-          }
+          ;[r, g, b] = palette === "duotone" ? colors.highlight : colors.ink
           data[i + 3] = 255
         }
       } else {
@@ -276,29 +286,38 @@ function renderHalftone(
     for (let col = 0; col < cols; col += 1) {
       const i = (row * cols + col) * 4
       const alpha = (cells[i + 3] / 255) * ramp[row]
-      const radius =
-        maxRadius *
-        Math.sqrt(tone(cells[i], cells[i + 1], cells[i + 2], colors.lightBackground) * alpha)
-      if (radius < 0.4) continue
+      const [r, g, b] = [cells[i], cells[i + 1], cells[i + 2]]
       const cx = col * cell + cell / 2
       const cy = row * cell + cell / 2
       if (singleInk) {
+        // Ink on the page: dots shrink with tone and fade.
+        const radius = maxRadius * Math.sqrt(tone(r, g, b, colors.lightBackground) * alpha)
+        if (radius < 0.4) continue
         ctx.moveTo(cx + radius, cy)
         ctx.arc(cx, cy, radius, 0, Math.PI * 2)
-      } else {
-        // Brighten by the inverse dot coverage so the cell keeps its average
-        // brightness; otherwise dark hues on small dots turn to near-black.
-        const coverage = (Math.PI * radius * radius) / (cell * cell)
-        const gain = colors.lightBackground
-          ? 1
-          : gainFor(cells[i], cells[i + 1], cells[i + 2], coverage / Math.max(0.05, alpha))
-        ctx.fillStyle = `rgb(${cells[i] * gain},${cells[i + 1] * gain},${cells[i + 2] * gain})`
-        ctx.beginPath()
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2)
-        ctx.fill()
+        continue
       }
+      if (alpha <= 0.01) continue
+      // Color: shadow paper plus a lit dot, both faded together, so the
+      // image reads the same on light and dark pages.
+      ctx.globalAlpha = alpha
+      ctx.fillStyle = `rgb(${r * SHADOW},${g * SHADOW},${b * SHADOW})`
+      const x0 = Math.floor(col * cell)
+      const y0 = Math.floor(row * cell)
+      ctx.fillRect(x0, y0, Math.ceil((col + 1) * cell) - x0, Math.ceil((row + 1) * cell) - y0)
+      const radius = maxRadius * Math.sqrt(tone(r, g, b, false))
+      if (radius < 0.4) continue
+      // Brighten by the inverse dot coverage so the cell keeps its average
+      // brightness; otherwise dark hues on small dots turn to near-black.
+      const coverage = (Math.PI * radius * radius) / (cell * cell)
+      const gain = gainFor(r, g, b, coverage)
+      ctx.fillStyle = `rgb(${r * gain},${g * gain},${b * gain})`
+      ctx.beginPath()
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+      ctx.fill()
     }
   }
+  ctx.globalAlpha = 1
   if (singleInk) ctx.fill()
 }
 

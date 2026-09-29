@@ -83,7 +83,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
     contrast: 105,
     brightness: 100,
     fade: 50,
-    dimLight: 15,
+    dimLight: 0,
     dimDark: 10,
   },
   image: null,
