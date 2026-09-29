@@ -18,6 +18,8 @@ export type BackdropSettings = {
   focusY: number
   effect: BackdropEffect
   palette: BackdropPalette
+  /** Dither/halftone contrast between lit and shadow levels, 0–100. */
+  strength: number
   /** Effect cell size in CSS px (dither pixel, halftone spacing unit, …). */
   cellSize: number
   /** Percent, 100 = unchanged. */
@@ -79,6 +81,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
     focusY: 25,
     effect: "dither",
     palette: "color",
+    strength: 45,
     cellSize: 2,
     contrast: 105,
     brightness: 100,
@@ -155,6 +158,7 @@ function parseAppearance(input: unknown): Appearance {
         ["color", "posterize", "mono", "duotone"],
         db.palette,
       ),
+      strength: clampNumber(rawBackdrop.strength, 0, 100, db.strength),
       cellSize: clampNumber(rawBackdrop.cellSize, 1, 12, db.cellSize),
       contrast: clampNumber(rawBackdrop.contrast, 50, 200, db.contrast),
       brightness: clampNumber(rawBackdrop.brightness, 30, 170, db.brightness),

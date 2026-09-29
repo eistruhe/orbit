@@ -153,6 +153,23 @@
   --scrim: oklch(1 0 0 / 3%);
 }
 
+/*
+ * Light theme on translucent panels: solid light-gray lines vanish over a
+ * backdrop, so borders become alpha black and fields get a light wash.
+ * Contrast then holds on whatever the panel lets through. Unlayered on
+ * purpose: it must beat the :root tokens and the fields' bg-transparent.
+ */
+html:not(.dark):not([data-surface="opaque"]) {
+  --border: oklch(0 0 0 / 0.14);
+  --border-strong: oklch(0 0 0 / 0.3);
+  --input: oklch(0 0 0 / 0.22);
+  --sidebar-border: oklch(0 0 0 / 0.14);
+}
+html:not(.dark):not([data-surface="opaque"])
+  :is([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]) {
+  background-color: oklch(1 0 0 / 0.55);
+}
+
 @layer base {
   * {
     @apply rounded-none border-border outline-ring/50 focus-visible:ring-0!;

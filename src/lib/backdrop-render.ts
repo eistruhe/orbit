@@ -40,12 +40,16 @@ const BAYER_8 = [
 ]
 
 /**
- * "Off" pixels of a color dither and the paper under halftone dots: the
- * pixel's own hue, nearly black. Keeping them opaque makes the image read
+ * Color dither levels around the pixel's own color: "lit" and "shadow"
+ * pixels, and the paper under halftone dots. Kept opaque so the image reads
  * the same on light and dark pages (like Ceron); only the fade reveals the
- * page.
+ * page. `strength` (0–100) spreads them from a faint texture (0) to a
+ * near-black/bright split (100).
  */
-const SHADOW = 0.16
+function ditherLevels(strength: number): { shadow: number; lit: number } {
+  const k = strength / 100
+  return { shadow: 1 - 0.85 * k, lit: 1 + 0.3 * k }
+}
 
 /** Upper bound for full-resolution effects, keeps renders well under 100ms. */
 const MAX_PIXELS = 6_000_000
@@ -184,6 +188,7 @@ function processPixels(
   const ramp = fadeRows(placement, height, settings.fade)
   const { effect, palette } = settings
   const grainBlock = Math.max(1, Math.round(settings.cellSize / 2))
+  const levels = ditherLevels(settings.strength)
 
   for (let y = 0; y < height; y += 1) {
     const rowFade = ramp[y]
@@ -207,18 +212,19 @@ function processPixels(
           b = (Math.min(3, Math.floor((b / 255) * 3 + t)) * 255) / 3
           data[i + 3] = alpha >= t ? 255 : 0
         } else if (palette === "color") {
-          // The fade dissolves pixels into the page; tone only picks a lit
-          // (brightened) or shadow (darkened) version of the pixel's color.
-          if (alpha < t) {
+          // Tone picks a lit or shadow version of the pixel's own color. In
+          // the fade, pixels thin out along the pattern and also turn
+          // translucent, so the image dissolves softly instead of in steps.
+          if (alpha < t * 0.7) {
             data[i + 3] = 0
             continue
           }
           const lit = tone(r, g, b, false) >= t
-          const gain = lit ? Math.sqrt(gainFor(r, g, b, tone(r, g, b, false))) : SHADOW
+          const gain = lit ? Math.min(levels.lit, 255 / Math.max(1, r, g, b)) : levels.shadow
           r *= gain
           g *= gain
           b *= gain
-          data[i + 3] = 255
+          data[i + 3] = alpha * 255
         } else {
           // Ink on the page: tone and fade together decide whether it lands.
           const density = tone(r, g, b, colors.lightBackground) * alpha
@@ -243,7 +249,7 @@ function processPixels(
           g += noise
           b += noise
         }
-        data[i + 3] = effect === "pixelate" ? (alpha >= t ? 255 : 0) : alpha * 255
+        data[i + 3] = effect === "pixelate" && alpha < t * 0.7 ? 0 : alpha * 255
       }
       data[i] = r
       data[i + 1] = g
@@ -276,6 +282,7 @@ function renderHalftone(
   ctx.clearRect(0, 0, width, height)
 
   const maxRadius = cell * 0.62
+  const { shadow } = ditherLevels(settings.strength)
   const singleInk = settings.palette === "mono" || settings.palette === "duotone"
   if (singleInk) {
     const ink = settings.palette === "duotone" ? colors.highlight : colors.ink
@@ -301,7 +308,7 @@ function renderHalftone(
       // Color: shadow paper plus a lit dot, both faded together, so the
       // image reads the same on light and dark pages.
       ctx.globalAlpha = alpha
-      ctx.fillStyle = `rgb(${r * SHADOW},${g * SHADOW},${b * SHADOW})`
+      ctx.fillStyle = `rgb(${r * shadow},${g * shadow},${b * shadow})`
       const x0 = Math.floor(col * cell)
       const y0 = Math.floor(row * cell)
       ctx.fillRect(x0, y0, Math.ceil((col + 1) * cell) - x0, Math.ceil((row + 1) * cell) - y0)

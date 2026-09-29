@@ -378,6 +378,17 @@ export function AppearanceSettings() {
                   className="w-fit"
                 />
               </FieldRow>
+              {(backdrop.effect === "dither" || backdrop.effect === "halftone") &&
+              backdrop.palette === "color" ? (
+                <SliderRow
+                  label="Strength"
+                  value={backdrop.strength}
+                  min={0}
+                  max={100}
+                  unit="%"
+                  onChange={(strength) => updateBackdrop({ strength })}
+                />
+              ) : null}
               <SliderRow
                 label="Cell size"
                 value={backdrop.cellSize}
