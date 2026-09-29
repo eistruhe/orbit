@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { AppBackdrop } from "@/components/orbit/app-backdrop"
+import { APP_SCROLL_CONTAINER_ID } from "@/components/orbit/app-scroll"
 import { CommandPalette } from "@/components/orbit/command-palette"
 import { MetadataDialog } from "@/components/orbit/metadata-dialog"
 import {
@@ -618,8 +619,12 @@ export function OrbitApp() {
   return (
     <OrbitContext.Provider value={contextValue}>
       <TooltipProvider delay={200}>
-        {/* `isolate` keeps the -z-10 backdrop above the shell's own background. */}
-        <div className="relative isolate flex min-h-svh items-start bg-background bg-shell-gradient text-foreground">
+        {/*
+          `isolate` keeps the -z-10 backdrop above the shell's own background.
+          The shell is viewport-high and <main> scrolls instead of the window,
+          so the backdrop reaches the window edge and the scrollbar sits on it.
+        */}
+        <div className="relative isolate flex h-svh items-start overflow-hidden bg-background bg-shell-gradient text-foreground">
           <AppBackdrop />
           {actionFeedback ? (
             <span
@@ -642,7 +647,10 @@ export function OrbitApp() {
             onOpenExternal={openExternal}
           />
 
-          <main className="flex min-w-0 flex-1 flex-col">
+          <main
+            id={APP_SCROLL_CONTAINER_ID}
+            className="flex h-svh min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]"
+          >
             <Outlet />
           </main>
         </div>

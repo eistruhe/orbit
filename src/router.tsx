@@ -4,6 +4,7 @@ import {
   createRouter,
 } from "@tanstack/react-router"
 
+import { APP_SCROLL_CONTAINER_ID } from "@/components/orbit/app-scroll"
 import { OrbitApp } from "@/components/orbit/orbit-app"
 import { PageLayout } from "@/components/orbit/page-layout"
 import { PortsPage } from "@/components/orbit/ports-page"
@@ -342,7 +343,11 @@ const routeTree = rootRoute.addChildren([
   settingsLayoutRoute.addChildren([settingsIndexRoute]),
 ])
 
-export const router = createRouter({ routeTree })
+export const router = createRouter({
+  routeTree,
+  // Page content scrolls inside <main>, not the window.
+  scrollToTopSelectors: [`#${APP_SCROLL_CONTAINER_ID}`],
+})
 
 declare module "@tanstack/react-router" {
   interface Register {

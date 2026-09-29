@@ -175,12 +175,8 @@
   }
   html {
     @apply bg-background font-mono;
-    /*
-     * Always reserve the scrollbar lane so content and backdrop do not jump
-     * between short and long views. `scrollbar-gutter` is ignored on the root
-     * in Chromium; the track is transparent, so an idle lane stays invisible.
-     */
-    overflow-y: scroll;
+    /* Content scrolls inside <main> (see orbit-app.tsx), never the window. */
+    overflow: hidden;
     font-family: "Geist Mono Variable", ui-monospace, monospace;
     overscroll-behavior: none;
   }

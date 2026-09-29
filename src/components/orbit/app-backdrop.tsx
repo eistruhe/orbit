@@ -10,8 +10,8 @@ import {
 } from "@/lib/backdrop-render"
 
 /**
- * The fixed backdrop spans the layout viewport, which excludes the reserved
- * scrollbar gutter — so measure clientWidth, not innerWidth.
+ * The fixed backdrop spans the layout viewport; clientWidth excludes a root
+ * scrollbar should one ever appear, innerWidth would not.
  */
 function measureViewport() {
   return {
