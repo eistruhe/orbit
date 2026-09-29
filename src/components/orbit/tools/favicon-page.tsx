@@ -10,6 +10,7 @@ import { writeBatchFiles } from "@/lib/api"
 import { encodeIco } from "@/lib/ico"
 import { blobToBase64, downloadBlob } from "@/lib/image-encode"
 import { formatBytes } from "@/lib/format-size"
+import { cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 const ICO_SIZES = [16, 32, 48]
@@ -120,6 +121,7 @@ export function FaviconPage() {
       })
     } catch {
       setError("Could not read this image. Use an SVG or PNG file.")
+      cue("error", { emphasis: "subtle" })
     }
   }, [])
 
@@ -210,14 +212,20 @@ export function FaviconPage() {
   )
 
   const handleDownloadZip = () => {
-    const entries = Object.fromEntries(
-      allFiles.map((file) => [file.name, [file.bytes, { level: 0 }] as const]),
-    )
-    const zipped = zipSync(entries as Parameters<typeof zipSync>[0])
-    downloadBlob(
-      "favicons.zip",
-      new Blob([zipped.slice().buffer], { type: "application/zip" }),
-    )
+    try {
+      const entries = Object.fromEntries(
+        allFiles.map((file) => [file.name, [file.bytes, { level: 0 }] as const]),
+      )
+      const zipped = zipSync(entries as Parameters<typeof zipSync>[0])
+      downloadBlob(
+        "favicons.zip",
+        new Blob([zipped.slice().buffer], { type: "application/zip" }),
+      )
+      cue("success", { emphasis: "subtle" })
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not create ZIP")
+      cue("error")
+    }
   }
 
   const handleWriteToFolder = () => {
@@ -238,8 +246,10 @@ export function FaviconPage() {
         )
         const written = await writeBatchFiles(dirPath, payload)
         setWriteMessage(`Wrote ${written.length} files to ${dirPath}`)
+        cue("success", { emphasis: "subtle" })
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Could not write files")
+        cue("error")
       } finally {
         setBusy(false)
       }

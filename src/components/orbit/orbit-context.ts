@@ -48,7 +48,8 @@ export type OrbitContextValue = {
   setStack: (value: string) => void
   setProjectType: (value: ProjectTypeFilter) => void
   setTag: (value: string) => void
-  doScan: (libraryId?: string) => Promise<void>
+  /** Resolves true when the scan succeeded. */
+  doScan: (libraryId?: string) => Promise<boolean>
   saveAllPreferences: (next: Preferences) => Promise<void>
   togglePin: (path: string) => Promise<void>
   openProject: (path: string) => Promise<void>

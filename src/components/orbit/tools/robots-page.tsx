@@ -11,6 +11,7 @@ import { useState } from "react"
 import { ToolSection } from "@/components/orbit/tools/tool-section"
 import { UrlForm } from "@/components/orbit/tools/url-form"
 import { type RobotsValidation, validateRobots } from "@/lib/api"
+import { cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 function sampleTone(status: number | null): string {
@@ -36,9 +37,17 @@ export function RobotsPage() {
     setError(null)
     void (async () => {
       try {
-        setData(await validateRobots(urlInput.trim()))
+        const next = await validateRobots(urlInput.trim())
+        setData(next)
+        cue(
+          !next.robotsFound ||
+            next.sitemaps.some((sitemap) => !sitemap.ok || sitemap.errors.length > 0)
+            ? "warning"
+            : "ready",
+        )
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Validation failed")
+        cue("error")
         setData(null)
       } finally {
         setLoading(false)

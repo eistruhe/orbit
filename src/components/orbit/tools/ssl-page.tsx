@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ToolSection } from "@/components/orbit/tools/tool-section"
 import { type SslCertificate, checkSsl } from "@/lib/api"
+import { cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 const STORAGE_KEY = "orbit-ssl-domains"
@@ -60,9 +61,11 @@ export function SslPage() {
       .then((next) => {
         setResults(next)
         setExpanded(new Set())
+        cue(next.some((cert) => tone(cert) !== "ok") ? "warning" : "success")
       })
       .catch((cause: unknown) => {
         setError(cause instanceof Error ? cause.message : "Check failed")
+        cue("error")
         setResults(null)
       })
       .finally(() => setLoading(false))

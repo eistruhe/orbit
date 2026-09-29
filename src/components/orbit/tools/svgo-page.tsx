@@ -11,6 +11,7 @@ import { Slider } from "@/components/ui/slider"
 import { createDefaultSvgoSettings, mergeSvgoSettings, type SvgoUiSettings, } from "@/lib/svgo/default-settings"
 import { optimizeSvgString } from "@/lib/svgo/optimize-svg"
 import { svgoPluginConfig } from "@/lib/svgo/svgo-plugin-config"
+import { cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 type SvgInputItem = {
@@ -251,6 +252,7 @@ export function SvgoPage() {
         triggerSvgDownload(item.name, item.optimized)
       }, index * 120)
     })
+    if (allReady.length > 0) cue("success", { emphasis: "subtle" })
   }, [optimizedFiles])
 
   return (

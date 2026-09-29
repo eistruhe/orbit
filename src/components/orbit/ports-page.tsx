@@ -5,6 +5,7 @@ import { OrbitDialog } from "@/components/orbit/orbit-dialog"
 import { useOrbit } from "@/components/orbit/orbit-context"
 import { Button } from "@/components/ui/button"
 import { type PortEntry, fetchPorts, killPortProcess } from "@/lib/api"
+import { cue, interactionCue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 const REFRESH_MS = 2000
@@ -91,6 +92,7 @@ export function PortsPage() {
 
   const confirmKill = () => {
     if (!killTarget) return
+    interactionCue("close", { emphasis: "strong" })
     setKilling(true)
     setKillError(null)
     void (async () => {
@@ -108,8 +110,10 @@ export function PortsPage() {
       }
       setKilling(false)
       if (failure) {
+        cue("error")
         setKillError(failure)
       } else {
+        cue("success")
         setKillTarget(null)
         void refresh()
       }

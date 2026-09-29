@@ -27,6 +27,7 @@ import {
   savePreferences,
 } from "@/lib/api"
 import { toBrowserRemoteUrl } from "@/lib/remote-url"
+import { cue, interactionCue } from "@/lib/sound"
 import type { Preferences, ProjectLibrary, RepoRecord } from "@/types/repo"
 
 const WEEK_SEC = 7 * 24 * 60 * 60
@@ -152,14 +153,38 @@ export function OrbitApp() {
   const [metaDialogPath, setMetaDialogPath] = useState<string | null>(null)
   const [metaSaving, setMetaSaving] = useState(false)
   const [devServers, setDevServers] = useState<DevServerInfo[]>([])
+  const devServersLoaded = useRef(false)
 
   const refreshDevServers = useCallback(async () => {
     try {
-      setDevServers(await listDevServers())
+      const next = await listDevServers()
+      devServersLoaded.current = true
+      setDevServers(next)
     } catch {
       // API not reachable — keep the last known state.
     }
   }, [])
+
+  // Sound on dev-server transitions: `ready` once a URL is detected, `error`
+  // when a live server crashes. A stop from Orbit exits by signal (exitCode
+  // null) and stays silent. The first fetched list is only the baseline, so
+  // servers already running when Orbit opens do not chime.
+  const devServerBaseline = useRef<Map<string, DevServerInfo> | null>(null)
+  useEffect(() => {
+    if (!devServersLoaded.current) return
+    const previous = devServerBaseline.current
+    devServerBaseline.current = new Map(devServers.map((server) => [server.id, server]))
+    if (!previous) return
+    for (const server of devServers) {
+      const before = previous.get(server.id)
+      if (server.detectedUrl && !before?.detectedUrl) cue("ready")
+      const wasAlive = !before || before.status === "starting" || before.status === "running"
+      const crashed =
+        server.status === "error" ||
+        (server.status === "exited" && server.exitCode !== null && server.exitCode !== 0)
+      if (wasAlive && crashed) cue("error")
+    }
+  }, [devServers])
 
   useEffect(() => {
     void refreshDevServers()
@@ -200,12 +225,12 @@ export function OrbitApp() {
 
   const projectLibraries = useMemo(() => buildProjectLibraries(prefs), [prefs])
 
-  const doScan = useCallback(async (libraryId?: string) => {
+  const doScan = useCallback(async (libraryId?: string): Promise<boolean> => {
     const nextLibraryId = libraryId ?? PRIMARY_LIBRARY_ID
     const library =
       projectLibraries.find((entry) => entry.id === nextLibraryId) ??
       projectLibraries[0]
-    if (!library) return
+    if (!library) return false
 
     setLoadingByLibrary((current) => ({ ...current, [library.id]: true }))
     setErrorByLibrary((current) => ({ ...current, [library.id]: null }))
@@ -226,11 +251,13 @@ export function OrbitApp() {
           scannedAt: res.scannedAt,
         },
       }))
+      return true
     } catch (e) {
       setErrorByLibrary((current) => ({
         ...current,
         [library.id]: e instanceof Error ? e.message : "Scan failed",
       }))
+      return false
     } finally {
       setLoadingByLibrary((current) => ({ ...current, [library.id]: false }))
     }
@@ -424,6 +451,7 @@ export function OrbitApp() {
   const togglePin = useCallback(
     async (path: string) => {
       if (!prefs) return
+      interactionCue("toggle", { direction: pinnedPathsSet.has(path) ? "back" : "forward" })
       const nextPinned = pinnedPathsSet.has(path)
         ? prefs.pinnedPaths.filter((p) => p !== path)
         : [...prefs.pinnedPaths, path]
@@ -443,6 +471,7 @@ export function OrbitApp() {
         const next = await savePreferences({ ...prefs, recent: nextRecent })
         setPrefs(next)
       } catch (e) {
+        cue("error", { emphasis: "subtle" })
         setActionFeedback(
           e instanceof Error ? e.message : "Could not save preferences",
         )
@@ -476,6 +505,7 @@ export function OrbitApp() {
                 : "Opened in Browser"
         setActionFeedback(message)
       } catch (e) {
+        cue("error")
         setActionFeedback(
           e instanceof Error ? e.message : "Could not open folder",
         )
@@ -487,6 +517,7 @@ export function OrbitApp() {
   const openRemote = useCallback((remoteUrl: string | null) => {
     const browserUrl = toBrowserRemoteUrl(remoteUrl)
     if (!browserUrl) {
+      cue("error", { emphasis: "subtle" })
       setActionFeedback("Remote URL is missing or unsupported")
       return
     }
@@ -542,9 +573,11 @@ export function OrbitApp() {
           repoNotes: nextRepoNotes,
         })
         setPrefs(next)
+        cue("success", { emphasis: "subtle" })
         setActionFeedback("Saved metadata")
         closeMetadataDialog()
       } catch (e) {
+        cue("error")
         setActionFeedback(
           e instanceof Error ? e.message : "Could not save metadata",
         )

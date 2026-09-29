@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { SegmentedControl } from "@/components/orbit/segmented-control"
 import { ToolSection } from "@/components/orbit/tools/tool-section"
 import { downloadBlob } from "@/lib/image-encode"
+import { cue } from "@/lib/sound"
 
 type QrType = "text" | "wifi" | "vcard"
 type ErrorLevel = "L" | "M" | "Q" | "H"
@@ -118,6 +119,7 @@ export function QrPage() {
     const base64 = pngUrl.split(",")[1]
     const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
     downloadBlob("qr-code.png", new Blob([bytes], { type: "image/png" }))
+    cue("success", { emphasis: "subtle" })
   }
 
   const downloadSvg = () => {
@@ -126,6 +128,7 @@ export function QrPage() {
       "qr-code.svg",
       new Blob([svgText], { type: "image/svg+xml" }),
     )
+    cue("success", { emphasis: "subtle" })
   }
 
   const copyPng = async () => {

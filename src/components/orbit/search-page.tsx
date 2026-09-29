@@ -20,6 +20,7 @@ import {
   langForPath,
   loadHighlighter,
 } from "@/lib/highlight"
+import { cue } from "@/lib/sound"
 
 /**
  * Cross-library content search backed by the local API grep endpoint.
@@ -56,6 +57,7 @@ export function SearchPage() {
           extensions: extensions.length > 0 ? extensions : undefined,
         })
         setData(result)
+        cue("ready", { emphasis: result.results.length > 0 ? "normal" : "subtle" })
 
         const langs = new Set<BundledLanguage>()
         for (const repo of result.results) {
@@ -70,6 +72,7 @@ export function SearchPage() {
             .catch(() => {})
         }
       } catch (err: unknown) {
+        cue("error")
         setError(err instanceof Error ? err.message : "Search failed")
         setData(null)
       } finally {

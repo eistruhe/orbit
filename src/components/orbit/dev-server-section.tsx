@@ -19,6 +19,7 @@ import {
   startDevServer,
   stopDevServer,
 } from "@/lib/api"
+import { cue, interactionCue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 import type { RepoRecord } from "@/types/repo"
 
@@ -154,11 +155,14 @@ export function DevServerSection({ repo }: { repo: RepoRecord }) {
   const handleStart = () => {
     setActionError(null)
     setBusy(true)
+    // `ready` follows from orbit-app once the server reports its URL.
+    cue("loading", { emphasis: "subtle" })
     void (async () => {
       try {
         await startDevServer(repo.path, selectedScript)
         await refreshDevServers()
       } catch (error: unknown) {
+        cue("error")
         setActionError(
           error instanceof Error ? error.message : "Could not start dev server",
         )
@@ -176,7 +180,9 @@ export function DevServerSection({ repo }: { repo: RepoRecord }) {
       try {
         await stopDevServer(serverId)
         await refreshDevServers()
+        interactionCue("close")
       } catch (error: unknown) {
+        cue("error")
         setActionError(
           error instanceof Error ? error.message : "Could not stop dev server",
         )

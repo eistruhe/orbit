@@ -25,6 +25,7 @@ import {
   type ProjectAudit,
   auditDeps,
 } from "@/lib/api"
+import { cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 const DIFF_ORDER: Record<DepDiffLevel, number> = {
@@ -170,9 +171,15 @@ export function DepsPage() {
       .then((next) => {
         setResults(next)
         setExpanded(new Set(next.length === 1 ? [next[0].path] : []))
+        cue(
+          next.some((project) => project.error || project.counts.outdated > 0)
+            ? "warning"
+            : "success",
+        )
       })
       .catch((cause: unknown) => {
         setError(cause instanceof Error ? cause.message : "Audit failed")
+        cue("error")
         setResults(null)
       })
       .finally(() => setLoading(false))

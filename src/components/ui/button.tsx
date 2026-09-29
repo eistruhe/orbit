@@ -1,6 +1,7 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 
+import { useCueAttrs } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
@@ -54,9 +55,12 @@ function Button({
   size = "default",
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+  const cueAttrs = useCueAttrs()
   return (
     <ButtonPrimitive
       data-slot="button"
+      // Primary actions tap; other variants stay quiet to avoid a click-fest.
+      {...(variant === "highlight" ? cueAttrs("tap") : {})}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />

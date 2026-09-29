@@ -6,6 +6,7 @@ import {
 
 import { APP_SCROLL_CONTAINER_ID } from "@/components/orbit/app-scroll"
 import { OrbitApp } from "@/components/orbit/orbit-app"
+import { interactionCue } from "@/lib/sound"
 import { PageLayout } from "@/components/orbit/page-layout"
 import { PortsPage } from "@/components/orbit/ports-page"
 import { ProjectDetailPage } from "@/components/orbit/project-detail-page"
@@ -347,6 +348,12 @@ export const router = createRouter({
   routeTree,
   // Page content scrolls inside <main>, not the window.
   scrollToTopSelectors: [`#${APP_SCROLL_CONTAINER_ID}`],
+})
+
+// Route changes whoosh (interaction sounds only). The initial load has no
+// fromLocation and stays silent.
+router.subscribe("onResolved", ({ fromLocation, pathChanged }) => {
+  if (fromLocation && pathChanged) interactionCue("navigate")
 })
 
 declare module "@tanstack/react-router" {

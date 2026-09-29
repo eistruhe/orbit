@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react"
 
+import { interactionCue } from "@/lib/sound"
+
 const PINNED_KEY = "orbit.tools.pinned"
 const RECENT_KEY = "orbit.tools.recent"
 const RECENT_MAX = 8
@@ -37,6 +39,8 @@ function write(next: ToolListsSnapshot) {
 }
 
 export function toggleToolPin(id: string) {
+  const pinning = !snapshot.pinned.includes(id)
+  interactionCue("toggle", { direction: pinning ? "forward" : "back" })
   write({
     ...snapshot,
     pinned: snapshot.pinned.includes(id)

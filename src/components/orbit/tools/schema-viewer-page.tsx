@@ -19,6 +19,7 @@ import {
   type SchemaViewerResponse,
   validateSchemaMarkup,
 } from "@/lib/api"
+import { cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 type InputMode = "url" | "snippet"
@@ -62,6 +63,7 @@ export function SchemaViewerPage() {
           const url = urlInput.trim()
           if (url.length === 0) {
             setError("Enter a URL first.")
+            cue("error", { emphasis: "subtle" })
             return
           }
           next = await validateSchemaMarkup({ url })
@@ -69,17 +71,26 @@ export function SchemaViewerPage() {
           const snippet = snippetInput.trim()
           if (snippet.length === 0) {
             setError("Paste markup first.")
+            cue("error", { emphasis: "subtle" })
             return
           }
           next = await validateSchemaMarkup({ snippet })
         }
         setResult(next)
+        cue(
+          next.issues.length > 0
+            ? "warning"
+            : next.extractedSchemas.length > 0
+              ? "success"
+              : "ready",
+        )
       } catch (submitError) {
         setError(
           submitError instanceof Error
             ? submitError.message
             : "Schema validation failed.",
         )
+        cue("error")
       } finally {
         setLoading(false)
       }

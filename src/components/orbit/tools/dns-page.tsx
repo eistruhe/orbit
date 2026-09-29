@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { SegmentedControl } from "@/components/orbit/segmented-control"
 import { ToolSection } from "@/components/orbit/tools/tool-section"
 import { type DnsLookup, type DnsRecord, lookupDns } from "@/lib/api"
+import { cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 const RECORD_TYPES = [
@@ -120,9 +121,13 @@ export function DnsPage() {
     setLoading(true)
     setError(null)
     void lookupDns(domain.trim(), nextType)
-      .then(setData)
+      .then((next) => {
+        setData(next)
+        cue("ready")
+      })
       .catch((cause: unknown) => {
         setError(cause instanceof Error ? cause.message : "Lookup failed")
+        cue("error")
         setData(null)
       })
       .finally(() => setLoading(false))

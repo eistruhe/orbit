@@ -263,6 +263,9 @@ function createMainWindow(preloadPath) {
       nodeIntegration: false,
       sandbox: true,
       preload: preloadPath,
+      // UI sounds (cuelume) report finished background work, e.g. a dev
+      // server becoming ready while Orbit has not been clicked yet.
+      autoplayPolicy: "no-user-gesture-required",
     },
     title: "Orbit",
     ...macTitleBarOptions,

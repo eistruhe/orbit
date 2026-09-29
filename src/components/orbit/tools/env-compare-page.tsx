@@ -16,6 +16,7 @@ import {
   fetchEnvFiles,
   fetchEnvValues,
 } from "@/lib/api"
+import { cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 type DiffGroup = {
@@ -71,10 +72,12 @@ export function EnvComparePage() {
             names.find((name) => name !== (names.find((n) => n === ".env") ?? names[0])) ??
             null,
         )
+        cue("ready")
       })
-      .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : "Could not load"),
-      )
+      .catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : "Could not load")
+        cue("error")
+      })
       .finally(() => setLoading(false))
   }
 
@@ -137,9 +140,10 @@ export function EnvComparePage() {
         setValues((current) => ({ ...current, [file]: next }))
         show()
       })
-      .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : "Could not load values"),
-      )
+      .catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : "Could not load values")
+        cue("error")
+      })
   }
 
   const copyMissing = () => {

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { useBulkQueue, type BulkItemState } from "@/hooks/use-bulk-queue"
 import { deleteRepoNodeModules, gitFetchRepo } from "@/lib/api"
 import { formatBytes } from "@/lib/format-size"
+import { batchCue, cue, interactionCue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 import type { RepoRecord } from "@/types/repo"
 
@@ -75,6 +76,9 @@ export function BulkRunDialog({
 
   const handleRun = () => {
     setStarted(true)
+    const destructive = action === "delete-node-modules"
+    if (destructive) interactionCue("close", { emphasis: "strong" })
+    cue("loading", { emphasis: "subtle" })
     void run(
       repos.map((repo) => repo.path),
       async (path) => {
@@ -84,6 +88,8 @@ export function BulkRunDialog({
           await deleteRepoNodeModules(path)
         }
       },
+    ).then(({ total, failed }) =>
+      batchCue(total, failed, { emphasis: destructive ? "strong" : "normal" }),
     )
   }
 

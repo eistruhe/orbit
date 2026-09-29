@@ -16,6 +16,7 @@ import {
   type SeoAuditResponse,
   type SeoCheckStatus,
 } from "@/lib/api"
+import { cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 function isValidHttpUrl(value: string): boolean {
@@ -140,14 +141,17 @@ export function SeoAuditPage() {
       setData(null)
       if (!isValidHttpUrl(url)) {
         setError("Please enter a valid http(s) URL.")
+        cue("error", { emphasis: "subtle" })
         return
       }
       setLoading(true)
       try {
         const result = await fetchSeoAudit(url)
         setData(result)
+        cue("ready")
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to load audit")
+        cue("error")
       } finally {
         setLoading(false)
       }

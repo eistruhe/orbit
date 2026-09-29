@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 
 import { useOrbit } from "@/components/orbit/orbit-context"
 import { TOOLS, type ToolMeta } from "@/components/orbit/tools/tool-registry"
+import { interactionCue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 import type { RepoRecord } from "@/types/repo"
 
@@ -65,6 +66,20 @@ export function CommandPalette() {
     if (!open) return
     const id = window.setTimeout(() => inputRef.current?.focus(), 0)
     return () => window.clearTimeout(id)
+  }, [open])
+
+  // Subtle open/close; deferred so StrictMode's double effect stays silent.
+  useEffect(() => {
+    if (!open) return
+    let opened = false
+    const timer = window.setTimeout(() => {
+      opened = true
+      interactionCue("open", { emphasis: "subtle" })
+    }, 0)
+    return () => {
+      window.clearTimeout(timer)
+      if (opened) interactionCue("close", { emphasis: "subtle" })
+    }
   }, [open])
 
   const entries = useMemo<PaletteEntry[]>(() => {

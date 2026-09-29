@@ -34,6 +34,7 @@
     "clsx": "^2.1.1",
     "concurrently": "^9.2.1",
     "cronstrue": "^3.24.0",
+    "cuelume": "^0.2.4",
     "culori": "^4.0.2",
     "electron-updater": "^6.8.3",
     "exifr": "^7.1.3",

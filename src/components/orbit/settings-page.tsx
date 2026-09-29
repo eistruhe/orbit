@@ -2,7 +2,9 @@ import { useEffect, useState } from "react"
 
 import { AppearanceSettings } from "@/components/orbit/appearance-settings"
 import { useOrbit } from "@/components/orbit/orbit-context"
+import { SoundSettings } from "@/components/orbit/sound-settings"
 import { ToolSection } from "@/components/orbit/tools/tool-section"
+import { cue } from "@/lib/sound"
 import { validateTinifyKey } from "@/lib/api"
 import { ORBIT_APP_VERSION, ORBIT_COPYRIGHT_NOTICE } from "@/lib/orbit-meta"
 import { Button } from "@/components/ui/button"
@@ -110,7 +112,9 @@ export function SettingsPage() {
           },
         },
       })
+      cue("success", { emphasis: "subtle" })
     } catch (saveError) {
+      cue("error")
       setError(
         saveError instanceof Error ? saveError.message : "Could not save settings",
       )
@@ -133,12 +137,14 @@ export function SettingsPage() {
       setValidating(true)
       setError(null)
       const result = await validateTinifyKey(apiKey)
+      cue(result.valid ? "success" : "error")
       setValidationResult({
         valid: result.valid,
         message: result.message,
         compressionCount: result.compressionCount,
       })
     } catch (validationError) {
+      cue("error")
       setValidationResult({
         valid: false,
         message:
@@ -301,6 +307,8 @@ export function SettingsPage() {
       </div>
 
       <AppearanceSettings />
+
+      <SoundSettings />
 
       <Section
         title="Copyright"

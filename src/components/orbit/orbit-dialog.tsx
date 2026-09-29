@@ -2,6 +2,7 @@ import { X } from "lucide-react"
 import { useEffect } from "react"
 import { createPortal } from "react-dom"
 
+import { interactionCue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 type OrbitDialogProps = {
@@ -21,6 +22,24 @@ type OrbitDialogProps = {
 }
 
 /**
+ * `open` on mount, `close` on unmount. The deferred start keeps StrictMode's
+ * mount → unmount → mount in development from playing open/close/open.
+ */
+function useDialogCues() {
+  useEffect(() => {
+    let opened = false
+    const timer = window.setTimeout(() => {
+      opened = true
+      interactionCue("open")
+    }, 0)
+    return () => {
+      window.clearTimeout(timer)
+      if (opened) interactionCue("close")
+    }
+  }, [])
+}
+
+/**
  * Sharp-edged mono modal shell shared by all Orbit dialogs: portal overlay,
  * blurred backdrop, bracketed header, Escape/backdrop/X close.
  */
@@ -36,6 +55,8 @@ export function OrbitDialog({
   onClose,
   children,
 }: OrbitDialogProps) {
+  useDialogCues()
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return

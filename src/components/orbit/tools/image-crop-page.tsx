@@ -24,6 +24,7 @@ import { DropZone } from "@/components/orbit/drop-zone"
 import { SegmentedControl } from "@/components/orbit/segmented-control"
 import { ToolSection } from "@/components/orbit/tools/tool-section"
 import { decodeImageFile, downloadBlob } from "@/lib/image-encode"
+import { cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"]
@@ -108,6 +109,7 @@ export function ImageCropPage() {
       setOutputSize(null)
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : "Could not load image")
+      cue("error", { emphasis: "subtle" })
     }
   }, [])
 
@@ -278,10 +280,16 @@ export function ImageCropPage() {
   )
 
   const download = async () => {
-    const blob = await renderCrop(format)
-    if (!blob) return
-    const extension = format === "jpeg" ? "jpg" : format
-    downloadBlob(`${baseName}-crop.${extension}`, blob)
+    try {
+      const blob = await renderCrop(format)
+      if (!blob) return
+      const extension = format === "jpeg" ? "jpg" : format
+      downloadBlob(`${baseName}-crop.${extension}`, blob)
+      cue("success", { emphasis: "subtle" })
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : "Could not export crop")
+      cue("error")
+    }
   }
 
   const copyToClipboard = async () => {

@@ -17,6 +17,7 @@ import {
   drawResized,
   encodeCanvas,
 } from "@/lib/image-encode"
+import { batchCue, cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"]
@@ -102,11 +103,15 @@ export function ImageConvertPage() {
     if (processingRef.current) return
     processingRef.current = true
     setBusy(true)
+    if (queueRef.current.length > 0) cue("loading", { emphasis: "subtle" })
+    let processed = 0
+    let failed = 0
 
     try {
       while (queueRef.current.length > 0) {
         const next = queueRef.current.shift()
         if (!next) continue
+        processed += 1
         const { id, file } = next
         const options = optionsRef.current
         updateRow(id, { status: "converting", error: undefined })
@@ -144,6 +149,7 @@ export function ImageConvertPage() {
           bitmap.close()
           updateRow(id, { status: "done", outputs, diskPath })
         } catch (error: unknown) {
+          failed += 1
           updateRow(id, {
             status: "error",
             error:
@@ -154,6 +160,7 @@ export function ImageConvertPage() {
     } finally {
       processingRef.current = false
       setBusy(false)
+      batchCue(processed, failed)
     }
   }, [updateRow])
 
@@ -347,7 +354,10 @@ export function ImageConvertPage() {
                           variant="ghost"
                           size="icon-xs"
                           aria-label={`Download ${output.name}`}
-                          onClick={() => downloadBlob(output.name, output.blob)}
+                          onClick={() => {
+                            downloadBlob(output.name, output.blob)
+                            cue("success", { emphasis: "subtle" })
+                          }}
                         >
                           <Download className="size-3 text-muted-foreground" />
                         </Button>

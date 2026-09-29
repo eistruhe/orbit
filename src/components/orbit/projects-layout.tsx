@@ -2,6 +2,7 @@ import { RefreshCw } from "lucide-react"
 import { Outlet } from "@tanstack/react-router"
 
 import { ContentFrame } from "@/components/orbit/content-frame"
+import { cue } from "@/lib/sound"
 import { useOrbit } from "@/components/orbit/orbit-context"
 import { Button } from "@/components/ui/button"
 import { DotmCircular4 } from "@/components/ui/dotm-circular-4"
@@ -98,7 +99,10 @@ export function ProjectsLayout() {
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => void doScan(activeLibraryId)}
+          onClick={() => {
+            cue("loading", { emphasis: "subtle" })
+            void doScan(activeLibraryId).then((ok) => cue(ok ? "ready" : "error"))
+          }}
           disabled={loading}
           className="app-no-drag gap-1.5"
         >

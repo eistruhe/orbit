@@ -32,6 +32,7 @@ import {
 } from "@/lib/api"
 import { diskLabel, syncLabel } from "@/lib/repo-facts"
 import { formatRelativeFromIso } from "@/lib/time"
+import { cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 function decodeProjectPath(value: string | undefined): string | null {
@@ -299,10 +300,12 @@ export function ProjectDetailPage() {
                     await gitFetchRepo(repo.path)
                     setBranchReloadKey((k) => k + 1)
                     setRepoActionMessage("Fetched latest from remote.")
+                    cue("success", { emphasis: "subtle" })
                     void doScan(repo.orbitLibraryId)
                   } catch (error: unknown) {
                     const message =
                       error instanceof Error ? error.message : "git fetch failed"
+                    cue("error")
                     setRepoActionError(message)
                   } finally {
                     setGitFetching(false)
@@ -494,6 +497,7 @@ export function ProjectDetailPage() {
                   ? "No node_modules folder was found."
                   : "Removed node_modules.",
               )
+              cue("success", { emphasis: skipped ? "subtle" : "strong" })
               if (!skipped) {
                 void doScan(repo.orbitLibraryId)
               }
@@ -502,6 +506,7 @@ export function ProjectDetailPage() {
                 error instanceof Error
                   ? error.message
                   : "Could not delete node_modules"
+              cue("error")
               setRepoActionError(message)
             } finally {
               setDeletingNodeModules(false)

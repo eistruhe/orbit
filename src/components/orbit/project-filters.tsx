@@ -2,6 +2,7 @@ import { Search, X } from "lucide-react"
 import { memo } from "react"
 
 import { Input } from "@/components/ui/input"
+import { useCueAttrs } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 export type OwnershipFilter = "all" | "remote" | "local"
@@ -151,18 +152,22 @@ function FilterChips({
   onValueChange: (v: string) => void
   options: { value: string; label: string }[]
 }) {
+  const cueAttrs = useCueAttrs()
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
         [{label}]
       </span>
-      <div className="flex items-stretch border border-border bg-card">
+      <div role="radiogroup" aria-label={label} className="flex items-stretch border border-border bg-card">
         {options.map((o, i) => {
           const isActive = value === o.value
           return (
             <button
               type="button"
               key={o.value}
+              role="radio"
+              aria-checked={isActive}
+              {...cueAttrs("select")}
               onClick={() => onValueChange(o.value)}
               className={cn(
                 "h-6 px-2 text-[10px] uppercase tracking-[0.06em] transition-colors",

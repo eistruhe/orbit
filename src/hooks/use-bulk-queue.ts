@@ -20,7 +20,8 @@ export function useBulkQueue() {
       keys: string[],
       worker: (key: string) => Promise<void>,
       concurrency = 3,
-    ) => {
+    ): Promise<{ total: number; failed: number }> => {
+      let failed = 0
       setRunning(true)
       setStates(new Map(keys.map((key) => [key, { status: "queued" }])))
 
@@ -42,6 +43,7 @@ export function useBulkQueue() {
             await worker(key)
             update(key, { status: "done" })
           } catch (error: unknown) {
+            failed += 1
             update(key, {
               status: "error",
               error: error instanceof Error ? error.message : "Failed",
@@ -54,6 +56,7 @@ export function useBulkQueue() {
         Array.from({ length: Math.min(concurrency, keys.length) }, () => work()),
       )
       setRunning(false)
+      return { total: keys.length, failed }
     },
     [],
   )

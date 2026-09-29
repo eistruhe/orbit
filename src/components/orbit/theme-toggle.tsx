@@ -2,6 +2,7 @@ import { Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 
+import { useCueAttrs } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 type ThemeToggleProps = {
@@ -14,6 +15,7 @@ type ThemeToggleProps = {
  */
 export function ThemeToggle({ className }: ThemeToggleProps) {
   const { theme, setTheme, resolvedTheme } = useTheme()
+  const cueAttrs = useCueAttrs()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -40,6 +42,7 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
     >
       <button
         type="button"
+        {...cueAttrs("select")}
         onClick={() => setTheme("light")}
         aria-pressed={showLightActive && current !== "system"}
         className={cn(
@@ -56,6 +59,7 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
       <span className="w-px self-stretch bg-border" aria-hidden />
       <button
         type="button"
+        {...cueAttrs("select")}
         onClick={() => setTheme("system")}
         aria-pressed={current === "system"}
         className={cn(
@@ -70,6 +74,7 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
       <span className="w-px self-stretch bg-border" aria-hidden />
       <button
         type="button"
+        {...cueAttrs("select")}
         onClick={() => setTheme("dark")}
         aria-pressed={showDarkActive && current !== "system"}
         className={cn(

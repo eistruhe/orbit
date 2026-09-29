@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table"
 import { ToolSection } from "@/components/orbit/tools/tool-section"
 import { type RedirectInspection, inspectRedirects } from "@/lib/api"
+import { cue } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 function statusTone(status: number): string {
@@ -35,9 +36,16 @@ export function RedirectsPage() {
     setError(null)
     void (async () => {
       try {
-        setData(await inspectRedirects(urlInput.trim()))
+        const next = await inspectRedirects(urlInput.trim())
+        setData(next)
+        cue(
+          next.tooManyRedirects || next.redirectLoop || next.finalStatus >= 400
+            ? "warning"
+            : "ready",
+        )
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Could not inspect URL")
+        cue("error")
         setData(null)
       } finally {
         setLoading(false)

@@ -6,6 +6,7 @@ import { SegmentedControl, type SegmentedOption } from "@/components/orbit/segme
 import { ToolSection } from "@/components/orbit/tools/tool-section"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
+import { useCueAttrs } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 import {
   ACCENT_PRESETS,
@@ -106,16 +107,19 @@ function SliderRow({ label, value, min, max, step = 1, unit = "", disabled, onCh
 }
 
 function AccentPicker({ value }: { value: string }) {
+  const cueAttrs = useCueAttrs()
   const isPreset = ACCENT_PRESETS.some((preset) => preset.value === value)
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div role="radiogroup" aria-label="Accent color" className="flex flex-wrap items-center gap-1.5">
       {ACCENT_PRESETS.map((preset) => (
         <button
           key={preset.value}
           type="button"
+          role="radio"
           title={`${preset.label} ${preset.value}`}
           aria-label={preset.label}
-          aria-pressed={preset.value === value}
+          aria-checked={preset.value === value}
+          {...cueAttrs("select")}
           onClick={() => updateAppearance({ accent: preset.value })}
           className={cn(
             "size-6 border border-border transition-[outline-color] outline-offset-2",

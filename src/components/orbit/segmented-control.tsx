@@ -1,3 +1,4 @@
+import { useCueAttrs } from "@/lib/sound"
 import { cn } from "@/lib/utils"
 
 export type SegmentedOption<T extends string> = {
@@ -23,14 +24,19 @@ export function SegmentedControl<T extends string>({
   onValueChange: (value: T) => void
   className?: string
 }) {
+  const cueAttrs = useCueAttrs()
   return (
     <div
+      role="radiogroup"
       className={cn("flex h-8 items-stretch border border-border", className)}
     >
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
+          role="radio"
+          aria-checked={value === option.value}
+          {...cueAttrs("select")}
           disabled={option.disabled}
           title={option.title}
           onClick={() => onValueChange(option.value)}

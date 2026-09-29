@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import type { OpenTarget } from "@/lib/api"
 import type { ProjectLibrary, RepoRecord } from "@/types/repo"
+import { interactionCue } from "@/lib/sound"
 
 type SidebarPanelProps = {
   projectLibraries: ProjectLibrary[]
@@ -298,6 +299,7 @@ export const SidebarPanel = memo(function SidebarPanel({
                     navigate({ to: "/tools" })
                     return
                   }
+                  interactionCue(toolsExpanded ? "close" : "open", { emphasis: "subtle" })
                   setManualToolsExpanded((current) => !current)
                 })
               }

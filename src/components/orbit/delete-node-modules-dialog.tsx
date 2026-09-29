@@ -1,5 +1,6 @@
 import { OrbitDialog } from "@/components/orbit/orbit-dialog"
 import { Button } from "@/components/ui/button"
+import { interactionCue } from "@/lib/sound"
 
 type DeleteNodeModulesDialogProps = {
   open: boolean
@@ -54,7 +55,10 @@ export function DeleteNodeModulesDialog({
             type="button"
             variant="destructive"
             size="sm"
-            onClick={onConfirm}
+            onClick={() => {
+              interactionCue("close", { emphasis: "strong" })
+              onConfirm()
+            }}
             disabled={busy}
           >
             {busy ? "Deleting…" : "Delete node_modules"}

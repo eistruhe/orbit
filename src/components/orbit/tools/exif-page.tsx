@@ -8,6 +8,7 @@ import { DropZone } from "@/components/orbit/drop-zone"
 import { ToolSection } from "@/components/orbit/tools/tool-section"
 import { downloadBlob } from "@/lib/image-encode"
 import { formatBytes } from "@/lib/format-size"
+import { cue } from "@/lib/sound"
 
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/tiff", "image/heic"]
 
@@ -137,11 +138,13 @@ export function ExifPage() {
       updateEntry(entry.id, {
         stripped: { blob, name: strippedName(entry.name, type) },
       })
+      cue("success")
     } catch (cause: unknown) {
       updateEntry(entry.id, {
         error:
           cause instanceof Error ? cause.message : "Could not strip metadata",
       })
+      cue("error")
     }
   }
 
@@ -212,11 +215,11 @@ export function ExifPage() {
                       type="button"
                       variant="ghost"
                       size="xs"
-                      onClick={() =>
-                        entry.stripped
-                          ? downloadBlob(entry.stripped.name, entry.stripped.blob)
-                          : undefined
-                      }
+                      onClick={() => {
+                        if (!entry.stripped) return
+                        downloadBlob(entry.stripped.name, entry.stripped.blob)
+                        cue("success", { emphasis: "subtle" })
+                      }}
                     >
                       <Download className="size-3 text-success" />
                       {entry.stripped.name} (

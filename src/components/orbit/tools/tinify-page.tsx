@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
 import { formatBytes } from "@/lib/format-size"
 import { tinifyPaths, type TinifyResult } from "@/lib/api"
+import { batchCue, cue } from "@/lib/sound"
 
 const ACCEPTED_EXTENSIONS = [".png", ".jpg", ".jpeg"]
 
@@ -83,12 +84,16 @@ export function TinifyPage() {
     if (processingRef.current) return
     processingRef.current = true
     setBusy(true)
+    if (queueRef.current.length > 0) cue("loading", { emphasis: "subtle" })
+    let processed = 0
+    let failed = 0
 
     try {
       while (queueRef.current.length > 0) {
         const nextPath = queueRef.current.shift()
         if (!nextPath) continue
 
+        processed += 1
         updateRow(nextPath, { status: "compressing", error: undefined })
         try {
           const response = await tinifyPaths(
@@ -97,6 +102,7 @@ export function TinifyPage() {
           )
           const result = response.results[0] as TinifyResult | undefined
           if (!result) {
+            failed += 1
             updateRow(nextPath, {
               status: "error",
               error: "No result returned from compression.",
@@ -105,6 +111,7 @@ export function TinifyPage() {
           }
 
           if (result.error) {
+            failed += 1
             updateRow(nextPath, {
               status: "error",
               error: result.error,
@@ -121,6 +128,7 @@ export function TinifyPage() {
             error: undefined,
           })
         } catch (compressError) {
+          failed += 1
           updateRow(nextPath, {
             status: "error",
             error:
@@ -133,6 +141,7 @@ export function TinifyPage() {
     } finally {
       processingRef.current = false
       setBusy(false)
+      batchCue(processed, failed)
     }
   }, [updateRow])
 
