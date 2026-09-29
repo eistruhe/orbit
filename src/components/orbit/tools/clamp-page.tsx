@@ -1,4 +1,4 @@
-import { Check, Clipboard } from "lucide-react"
+import { Check, Clipboard, Undo2 } from "lucide-react"
 import { useCallback, useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -49,10 +49,166 @@ function computeClamp(
   const loPx = Math.min(minSize, maxSize)
   const hiPx = Math.max(minSize, maxSize)
 
-  const slopeVw = formatNumber(slope * 100)
+  const slopeVw = formatNumber(Math.abs(slope * 100))
+  const slopeSign = slope < 0 ? "-" : "+"
   const interceptRem = toRem(interceptPx, root)
-  const css = `clamp(${toRem(loPx, root)}rem, ${interceptRem}rem + ${slopeVw}vw, ${toRem(hiPx, root)}rem)`
+  const css = `clamp(${toRem(loPx, root)}rem, ${interceptRem}rem ${slopeSign} ${slopeVw}vw, ${toRem(hiPx, root)}rem)`
   return { css, slope, interceptPx, loPx, hiPx }
+}
+
+type ParsedClamp = {
+  minVw: number
+  maxVw: number
+  minSize: number
+  maxSize: number
+}
+
+type ParseOutcome = ParsedClamp | { error: string }
+
+/** Rounds to `decimals`, snapping to an integer when within `snap`. */
+function tidy(value: number, decimals: number, snap: number): number {
+  const rounded = Math.round(value)
+  if (Math.abs(value - rounded) < snap) return rounded
+  return Number(value.toFixed(decimals))
+}
+
+/**
+ * Splits `input` on top-level commas, ignoring commas nested in parens
+ * (e.g. inside a wrapped calc()).
+ */
+function splitTopLevel(input: string): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let current = ""
+  for (const char of input) {
+    if (char === "(") depth += 1
+    if (char === ")") depth -= 1
+    if (char === "," && depth === 0) {
+      parts.push(current)
+      current = ""
+      continue
+    }
+    current += char
+  }
+  parts.push(current)
+  return parts.map((part) => part.trim())
+}
+
+/** Strips a single wrapping `calc( … )` if present. */
+function unwrapCalc(input: string): string {
+  const match = /^calc\((.*)\)$/i.exec(input.trim())
+  return match ? match[1].trim() : input.trim()
+}
+
+/**
+ * Sums the terms of a linear expression such as `0.8rem + 0.5vw` into a
+ * pixel intercept and a slope (px per px of viewport width).
+ */
+function parseLinearExpression(
+  input: string,
+  root: number,
+): { interceptPx: number; slope: number } | { error: string } {
+  const compact = unwrapCalc(input).replace(/\s+/g, "")
+  if (!compact) return { error: "Preferred value is empty." }
+
+  const termPattern = /([+-]?)(\d*\.?\d+(?:e[+-]?\d+)?)([a-z%]*)/gi
+  let consumed = ""
+  let interceptPx = 0
+  let slope = 0
+
+  for (const match of compact.matchAll(termPattern)) {
+    const [whole, sign, digits, unitRaw] = match
+    consumed += whole
+    const magnitude = Number(digits)
+    if (!Number.isFinite(magnitude)) return { error: `Bad number "${digits}".` }
+    const value = sign === "-" ? -magnitude : magnitude
+    const unit = unitRaw.toLowerCase()
+
+    if (unit === "vw" || unit === "vi") slope += value / 100
+    else if (unit === "px") interceptPx += value
+    else if (unit === "rem" || unit === "em") interceptPx += value * root
+    else if (unit === "" && value === 0) {
+      /* unitless zero is fine */
+    } else return { error: `Unsupported unit "${unitRaw || "none"}" in "${whole}".` }
+  }
+
+  if (consumed !== compact) {
+    return { error: "Preferred value must be like 0.8rem + 0.5vw." }
+  }
+  return { interceptPx, slope }
+}
+
+/** Parses a single length (px, rem, em, or unitless 0) into pixels. */
+function parseLength(input: string, root: number): number | null {
+  const match = /^([+-]?\d*\.?\d+(?:e[+-]?\d+)?)(px|rem|em)?$/i.exec(
+    input.trim(),
+  )
+  if (!match) return null
+  const value = Number(match[1])
+  if (!Number.isFinite(value)) return null
+  const unit = (match[2] ?? "").toLowerCase()
+  if (unit === "px") return value
+  if (unit === "rem" || unit === "em") return value * root
+  return value === 0 ? 0 : null
+}
+
+/**
+ * Reverse-engineers a `clamp(min, intercept + slope·vw, max)` expression
+ * back into the two viewport/size pairs that produce it.
+ */
+function parseClampExpression(input: string, root: number): ParseOutcome {
+  const start = input.toLowerCase().indexOf("clamp(")
+  if (start < 0) return { error: "No clamp( … ) found." }
+
+  let depth = 0
+  let end = -1
+  for (let index = start + "clamp".length; index < input.length; index += 1) {
+    const char = input[index]
+    if (char === "(") depth += 1
+    if (char === ")") {
+      depth -= 1
+      if (depth === 0) {
+        end = index
+        break
+      }
+    }
+  }
+  if (end < 0) return { error: "Unbalanced parentheses in clamp()." }
+
+  const inner = input.slice(start + "clamp(".length, end)
+  const parts = splitTopLevel(inner)
+  if (parts.length !== 3) {
+    return { error: "clamp() needs exactly three comma-separated values." }
+  }
+
+  const minPx = parseLength(parts[0], root)
+  const maxPx = parseLength(parts[2], root)
+  if (minPx === null) return { error: `Cannot read min value "${parts[0]}".` }
+  if (maxPx === null) return { error: `Cannot read max value "${parts[2]}".` }
+
+  const preferred = parseLinearExpression(parts[1], root)
+  if ("error" in preferred) return preferred
+  if (preferred.slope === 0) {
+    return { error: "Preferred value has no vw term, so there is no fluid range." }
+  }
+
+  const loPx = Math.min(minPx, maxPx)
+  const hiPx = Math.max(minPx, maxPx)
+  if (loPx === hiPx) {
+    return { error: "Min and max are equal, so there is no fluid range." }
+  }
+
+  const vwAtLo = (loPx - preferred.interceptPx) / preferred.slope
+  const vwAtHi = (hiPx - preferred.interceptPx) / preferred.slope
+  const minVw = Math.min(vwAtLo, vwAtHi)
+  const maxVw = Math.max(vwAtLo, vwAtHi)
+
+  return {
+    minVw: tidy(minVw, 2, 0.05),
+    maxVw: tidy(maxVw, 2, 0.05),
+    minSize: tidy(preferred.interceptPx + preferred.slope * minVw, 2, 0.01),
+    maxSize: tidy(preferred.interceptPx + preferred.slope * maxVw, 2, 0.01),
+  }
 }
 
 /**
@@ -67,6 +223,10 @@ export function ClampPage() {
   const [rootInput, setRootInput] = useState("16")
   const [previewVw, setPreviewVw] = useState(768)
   const [copied, setCopied] = useState(false)
+  const [pasteInput, setPasteInput] = useState("")
+  const [pasteStatus, setPasteStatus] = useState<
+    { kind: "ok"; parsed: ParsedClamp } | { kind: "error"; message: string } | null
+  >(null)
 
   const result = useMemo(() => {
     const minVw = parseNumber(minVwInput)
@@ -86,6 +246,36 @@ export function ClampPage() {
     return Math.min(Math.max(raw, result.loPx), result.hiPx)
   }, [result, previewVw])
 
+  /**
+   * Parses a pasted clamp() against the given root size and, on success,
+   * fills the four fields with the recovered viewport/size pairs.
+   */
+  const fillFromClamp = useCallback((text: string, rootValue: string) => {
+    if (text.trim() === "") {
+      setPasteStatus(null)
+      return
+    }
+    const root = parseNumber(rootValue) ?? 16
+    const outcome = parseClampExpression(text, root)
+    if ("error" in outcome) {
+      setPasteStatus({ kind: "error", message: outcome.error })
+      return
+    }
+    setMinVwInput(formatNumber(outcome.minVw, 2))
+    setMaxVwInput(formatNumber(outcome.maxVw, 2))
+    setMinSizeInput(formatNumber(outcome.minSize, 2))
+    setMaxSizeInput(formatNumber(outcome.maxSize, 2))
+    setPasteStatus({ kind: "ok", parsed: outcome })
+  }, [])
+
+  const applyPastedClamp = useCallback(
+    (text: string) => {
+      setPasteInput(text)
+      fillFromClamp(text, rootInput)
+    },
+    [fillFromClamp, rootInput],
+  )
+
   const handleCopy = useCallback(async () => {
     if ("error" in result) return
     try {
@@ -103,6 +293,50 @@ export function ClampPage() {
         title="clamp() calculator"
         description="Fluid values that scale between two viewport widths — typography, spacing, anything in px."
       >
+        <div className="mb-3 space-y-1.5 border border-dashed border-border-strong bg-surface-2/40 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <Undo2 className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="shrink-0 text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+              Paste clamp()
+            </span>
+            <Input
+              type="text"
+              value={pasteInput}
+              onChange={(event) => applyPastedClamp(event.target.value)}
+              placeholder="clamp(1rem, 0.8235rem + 0.7529vw, 1.5rem)"
+              aria-label="Paste an existing clamp() to fill the fields"
+              spellCheck={false}
+              className="h-7 flex-1 font-mono"
+            />
+            {pasteInput ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                onClick={() => applyPastedClamp("")}
+              >
+                Clear
+              </Button>
+            ) : null}
+          </div>
+          {pasteStatus?.kind === "ok" ? (
+            <p className="font-mono text-[10px] text-success">
+              Resolved: {formatNumber(pasteStatus.parsed.minSize, 2)}px @{" "}
+              {formatNumber(pasteStatus.parsed.minVw, 2)}px →{" "}
+              {formatNumber(pasteStatus.parsed.maxSize, 2)}px @{" "}
+              {formatNumber(pasteStatus.parsed.maxVw, 2)}px
+              <span className="text-muted-foreground"> (using the root font-size below)</span>
+            </p>
+          ) : pasteStatus?.kind === "error" ? (
+            <p className="text-[10px] text-destructive">{pasteStatus.message}</p>
+          ) : (
+            <p className="text-[10px] text-muted-foreground/80">
+              Paste an existing value like <code>clamp(1rem, 0.5rem + 1.5vw, 2rem)</code> to
+              reverse it into the fields below. px, rem and em are supported.
+            </p>
+          )}
+        </div>
+
         <div className="grid gap-3 sm:grid-cols-2">
           <FieldGroup label="Viewport">
             <LabeledInput
@@ -140,7 +374,11 @@ export function ClampPage() {
             type="text"
             inputMode="decimal"
             value={rootInput}
-            onChange={(event) => setRootInput(event.target.value)}
+            onChange={(event) => {
+              setRootInput(event.target.value)
+              // A pasted clamp() in rem depends on the root size, so re-resolve it.
+              fillFromClamp(pasteInput, event.target.value)
+            }}
             aria-label="Root font size in pixels"
             className="h-7 w-20 text-center font-mono"
           />
