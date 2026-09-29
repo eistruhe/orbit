@@ -7,6 +7,12 @@ export type BackdropColors = {
   highlight: Rgb
   /** Mono ink; light on dark themes, dark on light themes. */
   ink: Rgb
+  /**
+   * The app background behind the canvas is light. Density then follows how
+   * dark a pixel is, so what stands out against the page keeps its dots
+   * (dark hair on a light page), mirroring the dark theme.
+   */
+  lightBackground: boolean
 }
 
 type Viewport = {
@@ -41,11 +47,13 @@ function luminance(r: number, g: number, b: number): number {
 }
 
 /**
- * Perceived tone used for dot/pixel density. The gamma lifts mid-tones so
- * the image does not read darker once gaps show the background.
+ * Dot/pixel density: contrast against the page background (brightness on a
+ * dark page, darkness on a light one). The gamma lifts mid-tones so the
+ * image does not fade once gaps show the background.
  */
-function tone(r: number, g: number, b: number): number {
-  return Math.pow(luminance(r, g, b), 0.8)
+function tone(r: number, g: number, b: number, lightBackground: boolean): number {
+  const l = luminance(r, g, b)
+  return Math.pow(lightBackground ? 1 - l : l, 0.8)
 }
 
 function threshold(x: number, y: number): number {
@@ -192,13 +200,17 @@ function processPixels(
           data[i + 3] = alpha >= t ? 255 : 0
         } else {
           // Tone and fade together decide whether the pixel survives.
-          const density = tone(r, g, b) * alpha
+          const density = tone(r, g, b, colors.lightBackground) * alpha
           if (density < t) {
             data[i + 3] = 0
             continue
           }
           if (palette === "color") {
-            const gain = Math.sqrt(gainFor(r, g, b, tone(r, g, b)))
+            // Sparse bright pixels get brightened on dark pages; on light
+            // pages the kept pixels are the dark ones and stay as they are.
+            const gain = colors.lightBackground
+              ? 1
+              : Math.sqrt(gainFor(r, g, b, tone(r, g, b, false)))
             r *= gain
             g *= gain
             b *= gain
@@ -264,7 +276,9 @@ function renderHalftone(
     for (let col = 0; col < cols; col += 1) {
       const i = (row * cols + col) * 4
       const alpha = (cells[i + 3] / 255) * ramp[row]
-      const radius = maxRadius * Math.sqrt(tone(cells[i], cells[i + 1], cells[i + 2]) * alpha)
+      const radius =
+        maxRadius *
+        Math.sqrt(tone(cells[i], cells[i + 1], cells[i + 2], colors.lightBackground) * alpha)
       if (radius < 0.4) continue
       const cx = col * cell + cell / 2
       const cy = row * cell + cell / 2
@@ -275,7 +289,9 @@ function renderHalftone(
         // Brighten by the inverse dot coverage so the cell keeps its average
         // brightness; otherwise dark hues on small dots turn to near-black.
         const coverage = (Math.PI * radius * radius) / (cell * cell)
-        const gain = gainFor(cells[i], cells[i + 1], cells[i + 2], coverage / Math.max(0.05, alpha))
+        const gain = colors.lightBackground
+          ? 1
+          : gainFor(cells[i], cells[i + 1], cells[i + 2], coverage / Math.max(0.05, alpha))
         ctx.fillStyle = `rgb(${cells[i] * gain},${cells[i + 1] * gain},${cells[i + 2] * gain})`
         ctx.beginPath()
         ctx.arc(cx, cy, radius, 0, Math.PI * 2)

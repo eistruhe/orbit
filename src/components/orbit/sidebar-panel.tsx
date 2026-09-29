@@ -242,7 +242,7 @@ export const SidebarPanel = memo(function SidebarPanel({
   }
 
   return (
-    <aside className="sticky top-0 z-20 flex h-svh w-60 shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar text-sidebar-foreground">
+    <aside className="sticky top-0 z-20 flex h-svh w-60 shrink-0 flex-col overflow-hidden border-r border-border text-sidebar-foreground surface-chrome">
       <div className="app-drag relative flex h-12 items-center justify-end border-b border-border px-3">
         <div className="flex items-center gap-2">
           <span className="size-1.5 bg-highlight shadow-[0_0_8px_var(--highlight)] rounded-full" aria-hidden />

@@ -227,7 +227,20 @@
    * Frosted surfaces: blur only the outermost panels. Nested panels would
    * re-blur an already blurred backdrop at extra GPU cost for no visual gain.
    */
-  html[data-surface="frosted"] :is(.bg-card, .bg-sidebar):not(:is(.bg-card, .bg-sidebar) *) {
+  html[data-surface="frosted"] .bg-card:not(:is(.bg-card, .surface-chrome) *) {
+    -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(1.15);
+    backdrop-filter: blur(var(--panel-blur)) saturate(1.15);
+  }
+
+  /*
+   * App chrome (sidebar and sticky page headers) shares one surface so both
+   * read as the same material. Headers need the blur in tinted mode too,
+   * since page content scrolls underneath them.
+   */
+  .surface-chrome {
+    background-color: var(--sidebar);
+  }
+  html:not([data-surface="opaque"]) .surface-chrome {
     -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(1.15);
     backdrop-filter: blur(var(--panel-blur)) saturate(1.15);
   }

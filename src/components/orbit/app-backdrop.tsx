@@ -52,6 +52,7 @@ export function AppBackdrop() {
     () => ({
       highlight: parseHexColor(accent) ?? parseHexColor(DEFAULT_ACCENT) ?? [255, 107, 26],
       ink: resolvedTheme === "light" ? [28, 28, 28] : [236, 236, 236],
+      lightBackground: resolvedTheme === "light",
     }),
     [resolvedTheme, accent],
   )
