@@ -1,15 +1,28 @@
-import { useEffect, useRef, useState } from "react"
+import { useTheme } from "next-themes"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { useAppearance } from "@/lib/appearance"
 import { loadBackdropImage } from "@/lib/backdrop-image-store"
-import { readHighlightColor, renderBackdrop } from "@/lib/backdrop-render"
+import {
+  readHighlightColor,
+  renderBackdrop,
+  type BackdropColors,
+} from "@/lib/backdrop-render"
+
+/**
+ * The fixed backdrop spans the layout viewport, which excludes the reserved
+ * scrollbar gutter — so measure clientWidth, not innerWidth.
+ */
+function measureViewport() {
+  return {
+    width: document.documentElement.clientWidth,
+    height: document.documentElement.clientHeight,
+    devicePixelRatio: window.devicePixelRatio || 1,
+  }
+}
 
 function useViewportSize() {
-  const [size, setSize] = useState(() => ({
-    width: window.innerWidth,
-    height: window.innerHeight,
-    devicePixelRatio: window.devicePixelRatio || 1,
-  }))
+  const [size, setSize] = useState(measureViewport)
 
   useEffect(() => {
     let timer: number | undefined
@@ -17,11 +30,7 @@ function useViewportSize() {
       window.clearTimeout(timer)
       // Re-rendering full-resolution effects on every resize frame is wasteful.
       timer = window.setTimeout(() => {
-        setSize({
-          width: window.innerWidth,
-          height: window.innerHeight,
-          devicePixelRatio: window.devicePixelRatio || 1,
-        })
+        setSize(measureViewport())
       }, 150)
     }
     window.addEventListener("resize", onResize)
@@ -42,6 +51,14 @@ function useViewportSize() {
 export function AppBackdrop() {
   const { image, backdrop } = useAppearance()
   const viewport = useViewportSize()
+  const { resolvedTheme } = useTheme()
+  const colors = useMemo<BackdropColors>(
+    () => ({
+      highlight: readHighlightColor(),
+      ink: resolvedTheme === "light" ? [28, 28, 28] : [236, 236, 236],
+    }),
+    [resolvedTheme],
+  )
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [loaded, setLoaded] = useState<{ version: number; bitmap: ImageBitmap } | null>(null)
   const [pixelated, setPixelated] = useState(false)
@@ -79,14 +96,14 @@ export function AppBackdrop() {
     if (!canvas || !bitmap) return
     const frame = window.requestAnimationFrame(() => {
       try {
-        const result = renderBackdrop(canvas, bitmap, viewport, backdrop, readHighlightColor())
+        const result = renderBackdrop(canvas, bitmap, viewport, backdrop, colors)
         setPixelated(result.pixelated)
       } catch {
         // A bitmap closed by an image swap mid-frame; the next load re-renders.
       }
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [bitmap, viewport, backdrop])
+  }, [bitmap, viewport, backdrop, colors])
 
   if (!image) return null
 

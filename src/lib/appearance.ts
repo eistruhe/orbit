@@ -5,9 +5,15 @@ const STORAGE_KEY = "orbit.appearance"
 export type ContentLayout = "centered" | "left" | "full"
 export type SurfaceMode = "opaque" | "tinted" | "frosted"
 export type BackdropEffect = "none" | "dither" | "halftone" | "pixelate" | "grain"
-export type BackdropPalette = "color" | "mono" | "duotone"
+export type BackdropPalette = "color" | "posterize" | "mono" | "duotone"
+export type BackdropFit = "width" | "cover"
 
 export type BackdropSettings = {
+  /** `width`: full width, anchored top (fades out below); `cover`: whole window. */
+  fit: BackdropFit
+  /** Crop focus in percent (0 = left/top, 100 = right/bottom). */
+  focusX: number
+  focusY: number
   effect: BackdropEffect
   palette: BackdropPalette
   /** Effect cell size in CSS px (dither pixel, halftone spacing unit, …). */
@@ -16,7 +22,7 @@ export type BackdropSettings = {
   contrast: number
   /** Percent, 100 = unchanged. */
   brightness: number
-  /** Percent of the window height that fades into the background color. */
+  /** Lower part of the visible image (percent) that fades out. */
   fade: number
   /** Percent of background color laid over the image, per theme. */
   dimLight: number
@@ -47,14 +53,17 @@ export const DEFAULT_APPEARANCE: Appearance = {
   panelOpacity: 78,
   panelBlur: 16,
   backdrop: {
+    fit: "width",
+    focusX: 50,
+    focusY: 25,
     effect: "dither",
     palette: "color",
     cellSize: 2,
-    contrast: 110,
-    brightness: 90,
-    fade: 55,
+    contrast: 105,
+    brightness: 100,
+    fade: 50,
     dimLight: 45,
-    dimDark: 25,
+    dimDark: 10,
   },
   image: null,
 }
@@ -90,12 +99,19 @@ function parseAppearance(input: unknown): Appearance {
     panelOpacity: clampNumber(raw.panelOpacity, MIN_PANEL_OPACITY, 100, d.panelOpacity),
     panelBlur: clampNumber(raw.panelBlur, 0, 40, d.panelBlur),
     backdrop: {
+      fit: pick(rawBackdrop.fit, ["width", "cover"], db.fit),
+      focusX: clampNumber(rawBackdrop.focusX, 0, 100, db.focusX),
+      focusY: clampNumber(rawBackdrop.focusY, 0, 100, db.focusY),
       effect: pick(
         rawBackdrop.effect,
         ["none", "dither", "halftone", "pixelate", "grain"],
         db.effect,
       ),
-      palette: pick(rawBackdrop.palette, ["color", "mono", "duotone"], db.palette),
+      palette: pick(
+        rawBackdrop.palette,
+        ["color", "posterize", "mono", "duotone"],
+        db.palette,
+      ),
       cellSize: clampNumber(rawBackdrop.cellSize, 1, 12, db.cellSize),
       contrast: clampNumber(rawBackdrop.contrast, 50, 200, db.contrast),
       brightness: clampNumber(rawBackdrop.brightness, 30, 170, db.brightness),
@@ -138,7 +154,6 @@ export function applyAppearanceToDocument(appearance: Appearance = snapshot) {
     appearance.surface === "opaque" ? "1" : String(appearance.panelOpacity / 100),
   )
   root.style.setProperty("--panel-blur", `${appearance.panelBlur}px`)
-  root.style.setProperty("--backdrop-fade", `${appearance.backdrop.fade}%`)
   root.style.setProperty("--backdrop-dim-light", String(appearance.backdrop.dimLight / 100))
   root.style.setProperty("--backdrop-dim-dark", String(appearance.backdrop.dimDark / 100))
 }

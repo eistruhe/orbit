@@ -175,6 +175,12 @@
   }
   html {
     @apply bg-background font-mono;
+    /*
+     * Always reserve the scrollbar lane so content and backdrop do not jump
+     * between short and long views. `scrollbar-gutter` is ignored on the root
+     * in Chromium; the track is transparent, so an idle lane stays invisible.
+     */
+    overflow-y: scroll;
     font-family: "Geist Mono Variable", ui-monospace, monospace;
     overscroll-behavior: none;
   }
@@ -231,13 +237,8 @@
   }
 
   /* Background image layer (components/orbit/app-backdrop.tsx). */
+  /* The fade is baked into the canvas so it can dissolve into the effect. */
   .app-backdrop {
-    mask-image: linear-gradient(
-      to bottom,
-      #000 0%,
-      #000 calc(100% - var(--backdrop-fade, 55%)),
-      transparent 100%
-    );
     opacity: 0;
     transition: opacity 400ms ease-out;
   }

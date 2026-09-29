@@ -14,6 +14,7 @@ import {
   updateBackdrop,
   useAppearance,
   type BackdropEffect,
+  type BackdropFit,
   type BackdropPalette,
   type ContentLayout,
   type SurfaceMode,
@@ -44,8 +45,14 @@ const EFFECT_OPTIONS: SegmentedOption<BackdropEffect>[] = [
   { value: "grain", label: "Grain" },
 ]
 
+const FIT_OPTIONS: SegmentedOption<BackdropFit>[] = [
+  { value: "width", label: "Fit width", title: "Full width, anchored at the top, fades out below" },
+  { value: "cover", label: "Cover", title: "Fill the whole window" },
+]
+
 const PALETTE_OPTIONS: SegmentedOption<BackdropPalette>[] = [
-  { value: "color", label: "Color" },
+  { value: "color", label: "Color", title: "Original colors, background shows between pixels" },
+  { value: "posterize", label: "Posterize", title: "Four levels per color channel" },
   { value: "mono", label: "Mono" },
   { value: "duotone", label: "Duotone", title: "Black and the Orbit highlight color" },
 ]
@@ -271,6 +278,32 @@ export function AppearanceSettings() {
 
           {image ? (
             <>
+              <FieldRow label="Fit">
+                <SegmentedControl
+                  options={FIT_OPTIONS}
+                  value={backdrop.fit}
+                  onValueChange={(fit) => updateBackdrop({ fit })}
+                  className="w-fit"
+                />
+              </FieldRow>
+              {backdrop.fit === "cover" ? (
+                <SliderRow
+                  label="Position X"
+                  value={backdrop.focusX}
+                  min={0}
+                  max={100}
+                  unit="%"
+                  onChange={(focusX) => updateBackdrop({ focusX })}
+                />
+              ) : null}
+              <SliderRow
+                label="Position Y"
+                value={backdrop.focusY}
+                min={0}
+                max={100}
+                unit="%"
+                onChange={(focusY) => updateBackdrop({ focusY })}
+              />
               <FieldRow label="Effect">
                 <SegmentedControl
                   options={EFFECT_OPTIONS}
