@@ -5499,9 +5499,9 @@ var init_HowToTip = __esm(() => {
 
 // server/index.ts
 import { execFile as execFile5 } from "child_process";
-import { realpath as realpath3, rm as rm2, stat as stat10 } from "fs/promises";
+import { realpath as realpath3, rm as rm2, stat as stat11 } from "fs/promises";
 import { homedir as homedir2 } from "os";
-import { basename as basename5, join as join12, relative as relative4 } from "path";
+import { basename as basename6, join as join13, relative as relative4 } from "path";
 import { promisify as promisify5 } from "util";
 
 // node_modules/hono/dist/compose.js
@@ -22699,10 +22699,10 @@ var SKIP_DIR_NAMES = new Set([
 var MAX_DEPTH = 8;
 var GIT_CONCURRENCY = 10;
 var DU_TIMEOUT_MS = 900;
-async function getDirectorySizeBytes(path) {
+async function getDirectorySizeBytes(path, timeoutMs = DU_TIMEOUT_MS) {
   try {
     const out = await execFileAsync4("du", ["-sk", path], {
-      timeout: DU_TIMEOUT_MS,
+      timeout: timeoutMs,
       maxBuffer: 256 * 1024,
       env: process.env
     });
@@ -24274,9 +24274,110 @@ async function runSchemaViewerValidation(input) {
   }
 }
 
+// server/stats.ts
+import { appendFile, mkdir as mkdir2, stat as stat9 } from "fs/promises";
+import { basename as basename5, dirname as dirname3, extname as extname2, join as join11, resolve as resolve3 } from "path";
+var STATS_PATH = join11(CONFIG_DIR, "stats.jsonl");
+var STATS_VERSION = 1;
+var IMAGE_TOOLS = ["tinify", "svgo", "convert"];
+var IMAGE_OUTPUTS = ["replace", "new-file", "download", "clipboard"];
+function formatFromPath(path) {
+  const ext = extname2(path).slice(1).toLowerCase();
+  return ext === "jpeg" ? "jpg" : ext;
+}
+var projectCache = new Map;
+async function findProjectRoot(path) {
+  const startDir = dirname3(resolve3(path));
+  const visited = [];
+  let dir = startDir;
+  let found = null;
+  while (true) {
+    const cached = projectCache.get(dir);
+    if (cached !== undefined) {
+      found = cached;
+      break;
+    }
+    visited.push(dir);
+    try {
+      await stat9(join11(dir, ".git"));
+      found = dir;
+      break;
+    } catch {}
+    const parent2 = dirname3(dir);
+    if (parent2 === dir)
+      break;
+    dir = parent2;
+  }
+  for (const visitedDir of visited)
+    projectCache.set(visitedDir, found);
+  return found;
+}
+var writeChain = Promise.resolve();
+function recordStatsEvents(events) {
+  if (events.length === 0)
+    return writeChain;
+  writeChain = writeChain.then(async () => {
+    try {
+      const at = new Date().toISOString();
+      const lines = [];
+      for (const event of events) {
+        const withProject = event.type === "image" && event.path && !event.project ? { ...event, project: await findProjectRoot(event.path) ?? undefined } : event;
+        lines.push(JSON.stringify({ v: STATS_VERSION, at, ...withProject }));
+      }
+      await mkdir2(CONFIG_DIR, { recursive: true });
+      await appendFile(STATS_PATH, `${lines.join(`
+`)}
+`, "utf8");
+    } catch (error) {
+      console.error("Could not record stats events:", error);
+    }
+  });
+  return writeChain;
+}
+var MAX_CLIENT_EVENTS = 200;
+var MAX_STRING_LENGTH = 4096;
+function isByteCount(value) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+function boundedString(value) {
+  return typeof value === "string" && value.length > 0 && value.length <= MAX_STRING_LENGTH ? value : null;
+}
+function parseClientImageEvents(input) {
+  if (!Array.isArray(input))
+    return [];
+  const events = [];
+  for (const raw2 of input.slice(0, MAX_CLIENT_EVENTS)) {
+    if (!raw2 || typeof raw2 !== "object")
+      continue;
+    const entry = raw2;
+    const tool = IMAGE_TOOLS.find((value) => value === entry.tool);
+    const output = IMAGE_OUTPUTS.find((value) => value === entry.output);
+    const name = boundedString(entry.name);
+    const formatIn = boundedString(entry.formatIn);
+    const formatOut = boundedString(entry.formatOut);
+    if (entry.type !== "image" || !tool || !output || !name || !formatIn || !formatOut || !isByteCount(entry.bytesIn) || !isByteCount(entry.bytesOut)) {
+      continue;
+    }
+    const path = boundedString(entry.path);
+    events.push({
+      type: "image",
+      tool,
+      name: basename5(name),
+      ...path ? { path: resolve3(path) } : {},
+      formatIn: formatIn.toLowerCase(),
+      formatOut: formatOut.toLowerCase(),
+      bytesIn: Math.round(entry.bytesIn),
+      bytesOut: Math.round(entry.bytesOut),
+      output,
+      ...typeof entry.resized === "boolean" ? { resized: entry.resized } : {}
+    });
+  }
+  return events;
+}
+
 // server/tinify.ts
-import { readFile as readFile8, rename as rename2, stat as stat9, writeFile as writeFile3 } from "fs/promises";
-import { dirname as dirname3, extname as extname2, join as join11, parse as parse8, resolve as resolve3 } from "path";
+import { readFile as readFile8, rename as rename2, stat as stat10, writeFile as writeFile3 } from "fs/promises";
+import { dirname as dirname4, extname as extname3, join as join12, parse as parse8, resolve as resolve4 } from "path";
 var TINIFY_SHRINK_URL = "https://api.tinify.com/shrink";
 var ALLOWED_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"]);
 var MAX_CONCURRENCY = 3;
@@ -24306,19 +24407,19 @@ async function writeOutputFile(outputBytes, originalPath, replaceOriginal) {
     await writeFile3(outputPath, outputBytes);
     return outputPath;
   }
-  const tempPath = join11(dirname3(originalPath), `.${parse8(originalPath).name}.tinify-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}${parse8(originalPath).ext}`);
+  const tempPath = join12(dirname4(originalPath), `.${parse8(originalPath).name}.tinify-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}${parse8(originalPath).ext}`);
   await writeFile3(tempPath, outputBytes);
   await rename2(tempPath, originalPath);
   return originalPath;
 }
 async function tinifySinglePath(apiKey, path, replaceOriginal) {
   try {
-    const resolvedPath = resolve3(path);
-    const extension = extname2(resolvedPath).toLowerCase();
+    const resolvedPath = resolve4(path);
+    const extension = extname3(resolvedPath).toLowerCase();
     if (!ALLOWED_EXTENSIONS.has(extension)) {
       return { path, error: "Only PNG and JPG images are supported." };
     }
-    const fileStats = await stat9(resolvedPath);
+    const fileStats = await stat10(resolvedPath);
     if (!fileStats.isFile()) {
       return { path, error: "Path is not a file." };
     }
@@ -24335,6 +24436,7 @@ async function tinifySinglePath(apiKey, path, replaceOriginal) {
       const errorMessage = errorPayload?.message ?? errorPayload?.error ?? `Tinify request failed with ${shrinkResponse.status}.`;
       return { path, error: errorMessage };
     }
+    const compressionCount = readCompressionCountHeader(shrinkResponse);
     const shrinkPayload = await parseJsonSafe(shrinkResponse);
     const outputUrl = shrinkResponse.headers.get("location") ?? shrinkPayload?.output?.url ?? null;
     if (!outputUrl) {
@@ -24356,7 +24458,8 @@ async function tinifySinglePath(apiKey, path, replaceOriginal) {
       path: resolvedPath,
       outputPath,
       inputSize: fileStats.size,
-      outputSize
+      outputSize,
+      compressionCount
     };
   } catch (error) {
     return {
@@ -24419,13 +24522,13 @@ var PORT = (() => {
   return Number.isFinite(n) && n > 0 ? n : 8788;
 })();
 function defaultScanRoot() {
-  return process.env.ORBIT_SCAN_ROOT ?? join12(homedir2(), "Sites");
+  return process.env.ORBIT_SCAN_ROOT ?? join13(homedir2(), "Sites");
 }
 function expandHomePath(pathValue) {
   if (pathValue === "~")
     return homedir2();
   if (pathValue.startsWith("~/")) {
-    return join12(homedir2(), pathValue.slice(2));
+    return join13(homedir2(), pathValue.slice(2));
   }
   return pathValue;
 }
@@ -24524,7 +24627,7 @@ app.post("/api/scan", async (c) => {
   const libraryId = selectedLibrary?.id ?? fromLibraryId ?? "primary";
   const scannedAt = new Date().toISOString();
   try {
-    const st = await stat10(scanRoot);
+    const st = await stat11(scanRoot);
     if (!st.isDirectory()) {
       return c.json({
         error: `Scan root is not a directory: ${scanRoot}`,
@@ -24579,6 +24682,31 @@ app.post("/api/tinify", async (c) => {
     }, 400);
   }
   const results = await tinifyPaths(apiKey, paths, replaceOriginal);
+  const events = [];
+  let compressionCount;
+  for (const result of results) {
+    if (result.compressionCount !== undefined) {
+      compressionCount = Math.max(compressionCount ?? 0, result.compressionCount);
+    }
+    if (!result.outputPath || result.inputSize === undefined || result.outputSize === undefined) {
+      continue;
+    }
+    events.push({
+      type: "image",
+      tool: "tinify",
+      name: basename6(result.path),
+      path: result.path,
+      formatIn: formatFromPath(result.path),
+      formatOut: formatFromPath(result.outputPath),
+      bytesIn: result.inputSize,
+      bytesOut: result.outputSize,
+      output: replaceOriginal ? "replace" : "new-file"
+    });
+  }
+  if (compressionCount !== undefined) {
+    events.push({ type: "tinify-quota", compressionCount });
+  }
+  recordStatsEvents(events);
   return c.json({ results });
 });
 app.post("/api/tinify/validate-key", async (c) => {
@@ -24665,6 +24793,7 @@ app.get("/api/repo/branches", async (c) => {
     return c.json({ error: message }, 500);
   }
 });
+var NODE_MODULES_DU_TIMEOUT_MS = 1e4;
 app.post("/api/repo/delete-node-modules", async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== "object") {
@@ -24683,7 +24812,7 @@ app.post("/api/repo/delete-node-modules", async (c) => {
     const message = e instanceof Error ? e.message : String(e);
     return c.json({ error: message }, 400);
   }
-  const nodeModulesPath = join12(safeRepo, "node_modules");
+  const nodeModulesPath = join13(safeRepo, "node_modules");
   let resolvedNm;
   try {
     resolvedNm = await realpath3(nodeModulesPath);
@@ -24694,19 +24823,22 @@ app.post("/api/repo/delete-node-modules", async (c) => {
   if (rel.startsWith("..") || rel === "..") {
     return c.json({ error: "node_modules resolves outside the repository" }, 400);
   }
-  if (basename5(resolvedNm) !== "node_modules") {
+  if (basename6(resolvedNm) !== "node_modules") {
     return c.json({ error: "Not a node_modules directory" }, 400);
   }
+  let bytesFreed = null;
   try {
-    const st = await stat10(resolvedNm);
+    const st = await stat11(resolvedNm);
     if (!st.isDirectory()) {
       return c.json({ error: "node_modules is not a directory" }, 400);
     }
+    bytesFreed = await getDirectorySizeBytes(resolvedNm, NODE_MODULES_DU_TIMEOUT_MS);
     await rm2(resolvedNm, { recursive: true, force: true });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return c.json({ error: message }, 500);
   }
+  recordStatsEvents([{ type: "cleanup", project: safeRepo, bytesFreed }]);
   return c.json({ ok: true });
 });
 app.post("/api/repo/git-fetch", async (c) => {
@@ -24881,6 +25013,15 @@ app.post("/api/files/replace", async (c) => {
     inputSize: result.inputSize,
     outputSize: result.outputSize
   });
+});
+app.post("/api/stats/events", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  const events = parseClientImageEvents(body.events);
+  await recordStatsEvents(events);
+  return c.json({ recorded: events.length });
 });
 app.get("/api/env/files", async (c) => {
   const pathStr = c.req.query("path");

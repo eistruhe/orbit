@@ -550,6 +550,34 @@ export async function replaceFileContents(
   }
 }
 
+export type ImageStatsEvent = {
+  tool: "svgo" | "convert"
+  name: string
+  /** Absolute source path when known; the server derives the project from it. */
+  path?: string
+  formatIn: string
+  formatOut: string
+  bytesIn: number
+  bytesOut: number
+  output: "replace" | "new-file" | "download" | "clipboard"
+  resized?: boolean
+}
+
+/**
+ * Reports results of client-side image tools to the statistics log.
+ * Fire-and-forget: failures are ignored so tools never break on stats.
+ */
+export function reportImageStats(events: ImageStatsEvent[]): void {
+  if (events.length === 0) return
+  void fetch("/api/stats/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      events: events.map((event) => ({ type: "image", ...event })),
+    }),
+  }).catch(() => undefined)
+}
+
 /**
  * Writes a set of named files into a user-picked directory.
  */

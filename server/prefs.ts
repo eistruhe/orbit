@@ -36,7 +36,7 @@ export type ProjectLibrary = {
   path: string
 }
 
-const CONFIG_DIR = join(homedir(), ".config", "orbit")
+export const CONFIG_DIR = join(homedir(), ".config", "orbit")
 const CONFIG_PATH = join(CONFIG_DIR, "config.json")
 
 const defaultPreferences = (): Preferences => ({

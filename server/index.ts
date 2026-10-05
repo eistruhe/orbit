@@ -30,9 +30,15 @@ import { readPreferences, writePreferences, type ProjectLibrary } from "./prefs.
 import { readRepoReadme } from "./readme.ts"
 import { inspectRedirects } from "./redirects.ts"
 import { validateRobots } from "./robots.ts"
-import { scanRepos } from "./scan.ts"
+import { getDirectorySizeBytes, scanRepos } from "./scan.ts"
 import { runContentSearch } from "./search.ts"
 import { runSchemaViewerValidation } from "./schema-viewer.ts"
+import {
+  formatFromPath,
+  parseClientImageEvents,
+  recordStatsEvents,
+  type StatsEventInput,
+} from "./stats.ts"
 import { tinifyPaths, validateTinifyApiKey } from "./tinify.ts"
 
 /** Default avoids 8787 — commonly used by Wrangler and other local dev servers. */
@@ -400,6 +406,33 @@ app.post("/api/tinify", async (c) => {
   }
 
   const results = await tinifyPaths(apiKey, paths, replaceOriginal)
+
+  const events: StatsEventInput[] = []
+  let compressionCount: number | undefined
+  for (const result of results) {
+    if (result.compressionCount !== undefined) {
+      compressionCount = Math.max(compressionCount ?? 0, result.compressionCount)
+    }
+    if (!result.outputPath || result.inputSize === undefined || result.outputSize === undefined) {
+      continue
+    }
+    events.push({
+      type: "image",
+      tool: "tinify",
+      name: basename(result.path),
+      path: result.path,
+      formatIn: formatFromPath(result.path),
+      formatOut: formatFromPath(result.outputPath),
+      bytesIn: result.inputSize,
+      bytesOut: result.outputSize,
+      output: replaceOriginal ? "replace" : "new-file",
+    })
+  }
+  if (compressionCount !== undefined) {
+    events.push({ type: "tinify-quota", compressionCount })
+  }
+  void recordStatsEvents(events)
+
   return c.json({ results })
 })
 
@@ -526,6 +559,9 @@ app.get("/api/repo/branches", async (c) => {
   }
 })
 
+/** Measured before deleting so the Statistics page can show disk freed. */
+const NODE_MODULES_DU_TIMEOUT_MS = 10_000
+
 app.post("/api/repo/delete-node-modules", async (c) => {
   const body = await c.req.json().catch(() => null)
   if (!body || typeof body !== "object") {
@@ -571,17 +607,20 @@ app.post("/api/repo/delete-node-modules", async (c) => {
     return c.json({ error: "Not a node_modules directory" }, 400)
   }
 
+  let bytesFreed: number | null = null
   try {
     const st = await stat(resolvedNm)
     if (!st.isDirectory()) {
       return c.json({ error: "node_modules is not a directory" }, 400)
     }
+    bytesFreed = await getDirectorySizeBytes(resolvedNm, NODE_MODULES_DU_TIMEOUT_MS)
     await rm(resolvedNm, { recursive: true, force: true })
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     return c.json({ error: message }, 500)
   }
 
+  void recordStatsEvents([{ type: "cleanup", project: safeRepo, bytesFreed }])
   return c.json({ ok: true })
 })
 
@@ -801,6 +840,16 @@ app.post("/api/files/replace", async (c) => {
     inputSize: result.inputSize,
     outputSize: result.outputSize,
   })
+})
+
+app.post("/api/stats/events", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400)
+  }
+  const events = parseClientImageEvents((body as { events?: unknown }).events)
+  await recordStatsEvents(events)
+  return c.json({ recorded: events.length })
 })
 
 app.get("/api/env/files", async (c) => {

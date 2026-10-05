@@ -53,10 +53,13 @@ const GIT_CONCURRENCY = 10
 // Keep disk metrics bounded so slow filesystems do not block scans.
 const DU_TIMEOUT_MS = 900
 
-async function getDirectorySizeBytes(path: string): Promise<number | null> {
+export async function getDirectorySizeBytes(
+  path: string,
+  timeoutMs = DU_TIMEOUT_MS,
+): Promise<number | null> {
   try {
     const out = await execFileAsync("du", ["-sk", path], {
-      timeout: DU_TIMEOUT_MS,
+      timeout: timeoutMs,
       maxBuffer: 256 * 1024,
       env: process.env,
     })

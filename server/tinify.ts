@@ -12,6 +12,8 @@ export type TinifyResult = {
   outputPath?: string
   inputSize?: number
   outputSize?: number
+  /** Compressions used this month on the API key, from the response header. */
+  compressionCount?: number
   error?: string
 }
 
@@ -109,6 +111,7 @@ async function tinifySinglePath(
       return { path, error: errorMessage }
     }
 
+    const compressionCount = readCompressionCountHeader(shrinkResponse)
     const shrinkPayload = await parseJsonSafe<TinifyShrinkResponse>(shrinkResponse)
     const outputUrl =
       shrinkResponse.headers.get("location") ?? shrinkPayload?.output?.url ?? null
@@ -134,6 +137,7 @@ async function tinifySinglePath(
       outputPath,
       inputSize: fileStats.size,
       outputSize,
+      compressionCount,
     }
   } catch (error) {
     return {

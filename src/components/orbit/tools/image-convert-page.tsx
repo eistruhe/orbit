@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import { SegmentedControl } from "@/components/orbit/segmented-control"
 import { ToolSection } from "@/components/orbit/tools/tool-section"
-import { writeDerivedFile } from "@/lib/api"
+import { type ImageStatsEvent, reportImageStats, writeDerivedFile } from "@/lib/api"
 import { formatBytes } from "@/lib/format-size"
 import {
   type OutputFormat,
@@ -27,6 +27,8 @@ type OutputRow = {
   width: number
   height: number
   blob: Blob
+  /** Pixel dimensions differ from the input (a srcset width). */
+  resized: boolean
   outputPath?: string
 }
 
@@ -44,6 +46,13 @@ type ConvertRow = {
 function baseName(fileName: string): string {
   const lastDot = fileName.lastIndexOf(".")
   return lastDot > 0 ? fileName.slice(0, lastDot) : fileName
+}
+
+/** Lowercase extension of a file name; `jpeg` is folded into `jpg`. */
+function formatFromName(fileName: string): string {
+  const lastDot = fileName.lastIndexOf(".")
+  const ext = lastDot > 0 ? fileName.slice(lastDot + 1).toLowerCase() : ""
+  return ext === "jpeg" ? "jpg" : ext
 }
 
 function resolveDiskPath(file: File): string {
@@ -90,6 +99,8 @@ export function ImageConvertPage() {
   const processingRef = useRef(false)
   const optionsRef = useRef({ format, quality, widthsInput })
   optionsRef.current = { format, quality, widthsInput }
+  /** `rowId|outputName` already reported, so save + download count once. */
+  const reportedStatsRef = useRef(new Set<string>())
 
   const canWriteToDisk = Boolean(window.orbitFiles?.getPathForFile)
 
@@ -98,6 +109,32 @@ export function ImageConvertPage() {
       current.map((row) => (row.id === id ? { ...row, ...patch } : row)),
     )
   }, [])
+
+  const reportConvertStats = useCallback(
+    (
+      row: Pick<ConvertRow, "id" | "fileName" | "diskPath" | "inputSize">,
+      output: OutputRow,
+      mode: ImageStatsEvent["output"],
+    ) => {
+      const key = `${row.id}|${output.name}`
+      if (reportedStatsRef.current.has(key)) return
+      reportedStatsRef.current.add(key)
+      reportImageStats([
+        {
+          tool: "convert",
+          name: row.fileName,
+          ...(row.diskPath ? { path: row.diskPath } : {}),
+          formatIn: formatFromName(row.fileName),
+          formatOut: formatFromName(output.name),
+          bytesIn: row.inputSize,
+          bytesOut: output.blob.size,
+          output: mode,
+          resized: output.resized,
+        },
+      ])
+    },
+    [],
+  )
 
   const processQueue = useCallback(async () => {
     if (processingRef.current) return
@@ -134,6 +171,7 @@ export function ImageConvertPage() {
               width: canvas.width,
               height: canvas.height,
               blob,
+              resized: canvas.width !== bitmap.width,
             }
 
             if (diskPath) {
@@ -143,6 +181,11 @@ export function ImageConvertPage() {
                 extension: `.${extension}`,
                 dataBase64: await blobToBase64(blob),
               })
+              reportConvertStats(
+                { id, fileName: file.name, diskPath, inputSize: file.size },
+                output,
+                "new-file",
+              )
             }
             outputs.push(output)
           }
@@ -162,7 +205,7 @@ export function ImageConvertPage() {
       setBusy(false)
       batchCue(processed, failed)
     }
-  }, [updateRow])
+  }, [reportConvertStats, updateRow])
 
   const enqueueFiles = useCallback(
     (files: FileList | File[]) => {
@@ -356,6 +399,7 @@ export function ImageConvertPage() {
                           aria-label={`Download ${output.name}`}
                           onClick={() => {
                             downloadBlob(output.name, output.blob)
+                            reportConvertStats(row, output, "download")
                             cue("success", { emphasis: "subtle" })
                           }}
                         >

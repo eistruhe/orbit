@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
-import { replaceFileContents } from "@/lib/api"
+import { type ImageStatsEvent, replaceFileContents, reportImageStats } from "@/lib/api"
 import { formatBytes } from "@/lib/format-size"
 import { batchCue, cue } from "@/lib/sound"
 import { createDefaultSvgoSettings, mergeSvgoSettings, type SvgoUiSettings, } from "@/lib/svgo/default-settings"
@@ -66,6 +66,11 @@ function resolveDiskPath(file: File): string {
 /** Only plain .svg files can be overwritten; .svgz would need gzip. */
 function isReplaceablePath(path: string): boolean {
   return path.toLowerCase().endsWith(".svg")
+}
+
+/** UTF-8 byte length, i.e. the size the markup has on disk or in a download. */
+function utf8ByteLength(text: string): number {
+  return new TextEncoder().encode(text).length
 }
 
 function utf8ToBase64(text: string): string {
@@ -135,6 +140,8 @@ export function SvgoPage() {
 
   const settingsRef = useRef(settings)
   const replaceOriginalRef = useRef(replaceOriginal)
+  /** `id|bytes` of results already reported, so copy + download count once. */
+  const reportedStatsRef = useRef(new Set<string>())
 
   useEffect(() => {
     settingsRef.current = settings
@@ -220,6 +227,34 @@ export function SvgoPage() {
     )
   }, [pluginQuery])
 
+  const reportSvgStats = useCallback(
+    (
+      items: Array<SvgInputItem & { optimized: string | null }>,
+      output: ImageStatsEvent["output"],
+    ) => {
+      const events: ImageStatsEvent[] = []
+      for (const item of items) {
+        if (!item.optimized) continue
+        const bytesOut = utf8ByteLength(item.optimized)
+        const key = `${item.id}|${bytesOut}`
+        if (reportedStatsRef.current.has(key)) continue
+        reportedStatsRef.current.add(key)
+        events.push({
+          tool: "svgo",
+          name: item.name,
+          ...(item.diskPath ? { path: item.diskPath } : {}),
+          formatIn: "svg",
+          formatOut: "svg",
+          bytesIn: utf8ByteLength(item.original),
+          bytesOut,
+          output,
+        })
+      }
+      reportImageStats(events)
+    },
+    [],
+  )
+
   const updateFile = useCallback((id: string, patch: Partial<SvgInputItem>) => {
     setFiles((current) =>
       current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
@@ -255,6 +290,7 @@ export function SvgoPage() {
               inputSize: item.inputSize ?? result.inputSize,
               outputSize: result.outputSize,
             })
+            reportSvgStats([{ ...item, optimized }], "replace")
           } catch (error) {
             failed += 1
             updateFile(item.id, {
@@ -271,7 +307,7 @@ export function SvgoPage() {
         batchCue(targets.length, failed)
       }
     },
-    [updateFile],
+    [reportSvgStats, updateFile],
   )
 
   const readSvgFiles = useCallback(
@@ -345,18 +381,22 @@ export function SvgoPage() {
     })
   }, [])
 
-  const handleCopy = useCallback(async (value: string, target: CopyTarget) => {
-    if (!value) return
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopied(target)
-      window.setTimeout(() => {
-        setCopied((current) => (current === target ? null : current))
-      }, 1400)
-    } catch {
-      /* clipboard unavailable */
-    }
-  }, [])
+  const handleCopy = useCallback(
+    async (value: string, target: CopyTarget, items: SvgResultItem[]) => {
+      if (!value) return
+      try {
+        await navigator.clipboard.writeText(value)
+        reportSvgStats(items, "clipboard")
+        setCopied(target)
+        window.setTimeout(() => {
+          setCopied((current) => (current === target ? null : current))
+        }, 1400)
+      } catch {
+        /* clipboard unavailable */
+      }
+    },
+    [reportSvgStats],
+  )
 
   const copyAllText = useMemo(() => {
     return optimizedFiles
@@ -373,8 +413,9 @@ export function SvgoPage() {
         triggerSvgDownload(item.name, item.optimized)
       }, index * 120)
     })
+    reportSvgStats(allReady, "download")
     if (allReady.length > 0) cue("success", { emphasis: "subtle" })
-  }, [optimizedFiles])
+  }, [optimizedFiles, reportSvgStats])
 
   const replaceableFiles = useMemo(
     () => files.filter((item) => item.diskPath && isReplaceablePath(item.diskPath)),
@@ -445,7 +486,7 @@ export function SvgoPage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => void handleCopy(copyAllText, "all")}
+              onClick={() => void handleCopy(copyAllText, "all", optimizedFiles)}
               disabled={!copyAllText}
             >
               {copied === "all" ? (
@@ -688,7 +729,7 @@ export function SvgoPage() {
                         type="button"
                         variant="outline"
                         onClick={() =>
-                          void handleCopy(item.optimized ?? "", item.id)
+                          void handleCopy(item.optimized ?? "", item.id, [item])
                         }
                         disabled={!item.optimized}
                       >
@@ -707,11 +748,11 @@ export function SvgoPage() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() =>
-                          item.optimized
-                            ? triggerSvgDownload(item.name, item.optimized)
-                            : undefined
-                        }
+                        onClick={() => {
+                          if (!item.optimized) return
+                          triggerSvgDownload(item.name, item.optimized)
+                          reportSvgStats([item], "download")
+                        }}
                         disabled={!item.optimized}
                       >
                         <Download className="size-3.5" />
