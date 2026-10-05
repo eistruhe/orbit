@@ -24275,7 +24275,7 @@ async function runSchemaViewerValidation(input) {
 }
 
 // server/stats.ts
-import { appendFile, mkdir as mkdir2, stat as stat9 } from "fs/promises";
+import { appendFile, mkdir as mkdir2, readFile as readFile8, stat as stat9 } from "fs/promises";
 import { basename as basename5, dirname as dirname3, extname as extname2, join as join11, resolve as resolve3 } from "path";
 var STATS_PATH = join11(CONFIG_DIR, "stats.jsonl");
 var STATS_VERSION = 1;
@@ -24374,9 +24374,172 @@ function parseClientImageEvents(input) {
   }
   return events;
 }
+async function readStatsEvents() {
+  await writeChain;
+  let raw2;
+  try {
+    raw2 = await readFile8(STATS_PATH, "utf8");
+  } catch {
+    return [];
+  }
+  const events = [];
+  for (const line of raw2.split(`
+`)) {
+    if (!line.trim())
+      continue;
+    try {
+      const parsed = JSON.parse(line);
+      if (typeof parsed.type === "string" && typeof parsed.at === "string" && !Number.isNaN(Date.parse(parsed.at))) {
+        events.push(parsed);
+      }
+    } catch {}
+  }
+  return events;
+}
+var SERIES_DAYS = 30;
+var QUOTA_HISTORY_MONTHS = 6;
+var TOP_PROJECT_COUNT = 6;
+var RECENT_RUN_COUNT = 8;
+function localDayKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+function localMonthKey(date) {
+  return localDayKey(date).slice(0, 7);
+}
+function isImageEvent(event) {
+  return event.type === "image" && IMAGE_TOOLS.includes(event.tool) && isByteCount(event.bytesIn) && isByteCount(event.bytesOut);
+}
+function summarizeStats(events, now = new Date) {
+  const dayIndex = new Map;
+  for (let index2 = 0;index2 < SERIES_DAYS; index2 += 1) {
+    const day = new Date(now);
+    day.setDate(day.getDate() - (SERIES_DAYS - 1 - index2));
+    dayIndex.set(localDayKey(day), index2);
+  }
+  const emptySeries = () => new Array(SERIES_DAYS).fill(0);
+  const indexOfDay = (at) => dayIndex.get(localDayKey(new Date(at)));
+  const sorted = [...events].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const latestImages = new Map;
+  const cleanups = [];
+  const quotaByMonth = new Map;
+  for (const event of sorted) {
+    if (isImageEvent(event)) {
+      const key = [
+        event.tool,
+        event.formatOut,
+        event.resized ? "resized" : "full",
+        event.path ?? event.name,
+        event.bytesIn
+      ].join("|");
+      latestImages.delete(key);
+      latestImages.set(key, event);
+    } else if (event.type === "cleanup" && typeof event.project === "string") {
+      cleanups.push(event);
+    } else if (event.type === "tinify-quota" && isByteCount(event.compressionCount)) {
+      const month = localMonthKey(new Date(event.at));
+      quotaByMonth.set(month, Math.max(quotaByMonth.get(month) ?? 0, event.compressionCount));
+    }
+  }
+  const compressionGroups = new Map;
+  const conversionGroups = new Map;
+  const compression = {
+    files: 0,
+    bytesIn: 0,
+    bytesOut: 0,
+    dailySaved: emptySeries(),
+    dailyFiles: emptySeries()
+  };
+  const projects = new Map;
+  for (const event of latestImages.values()) {
+    if (event.resized)
+      continue;
+    const isConversion = event.tool === "convert";
+    const groups = isConversion ? conversionGroups : compressionGroups;
+    const groupKey = `${event.tool}|${event.formatIn}|${event.formatOut}`;
+    const group = groups.get(groupKey) ?? {
+      tool: event.tool,
+      formatIn: event.formatIn,
+      formatOut: event.formatOut,
+      files: 0,
+      bytesIn: 0,
+      bytesOut: 0,
+      dailySaved: emptySeries()
+    };
+    const saved = event.bytesIn - event.bytesOut;
+    const day = indexOfDay(event.at);
+    group.files += 1;
+    group.bytesIn += event.bytesIn;
+    group.bytesOut += event.bytesOut;
+    if (day !== undefined)
+      group.dailySaved[day] += saved;
+    groups.set(groupKey, group);
+    if (isConversion)
+      continue;
+    compression.files += 1;
+    compression.bytesIn += event.bytesIn;
+    compression.bytesOut += event.bytesOut;
+    if (day !== undefined) {
+      compression.dailySaved[day] += saved;
+      compression.dailyFiles[day] += 1;
+    }
+    if (event.project) {
+      const project = projects.get(event.project) ?? { files: 0, bytesSaved: 0 };
+      project.files += 1;
+      project.bytesSaved += saved;
+      projects.set(event.project, project);
+    }
+  }
+  const bySaved = (a, b) => b.bytesIn - b.bytesOut - (a.bytesIn - a.bytesOut);
+  const cleanupDaily = emptySeries();
+  let bytesFreed = 0;
+  for (const cleanup of cleanups) {
+    bytesFreed += cleanup.bytesFreed ?? 0;
+    const day = indexOfDay(cleanup.at);
+    if (day !== undefined)
+      cleanupDaily[day] += cleanup.bytesFreed ?? 0;
+  }
+  const currentMonth = localMonthKey(now);
+  const history = Array.from({ length: QUOTA_HISTORY_MONTHS }, (_, index2) => {
+    const month = localMonthKey(new Date(now.getFullYear(), now.getMonth() - (QUOTA_HISTORY_MONTHS - 1 - index2), 1));
+    return { month, used: quotaByMonth.get(month) ?? null };
+  });
+  const recent = [
+    ...[...latestImages.values()].map((event) => ({
+      type: "image",
+      at: event.at,
+      tool: event.tool,
+      name: event.name,
+      project: event.project,
+      formatIn: event.formatIn,
+      formatOut: event.formatOut,
+      bytesIn: event.bytesIn,
+      bytesOut: event.bytesOut
+    })),
+    ...cleanups.map((event) => ({
+      type: "cleanup",
+      at: event.at,
+      project: event.project,
+      bytesFreed: event.bytesFreed
+    }))
+  ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, RECENT_RUN_COUNT);
+  return {
+    trackingSince: sorted[0]?.at ?? null,
+    seriesDays: SERIES_DAYS,
+    compression: { ...compression, groups: [...compressionGroups.values()].sort(bySaved) },
+    conversion: { groups: [...conversionGroups.values()].sort(bySaved) },
+    cleanup: { runs: cleanups.length, bytesFreed, daily: cleanupDaily },
+    tinifyQuota: {
+      month: currentMonth,
+      used: quotaByMonth.get(currentMonth) ?? null,
+      history
+    },
+    topProjects: [...projects.entries()].map(([path, project]) => ({ path, ...project })).sort((a, b) => b.bytesSaved - a.bytesSaved).slice(0, TOP_PROJECT_COUNT),
+    recent
+  };
+}
 
 // server/tinify.ts
-import { readFile as readFile8, rename as rename2, stat as stat10, writeFile as writeFile3 } from "fs/promises";
+import { readFile as readFile9, rename as rename2, stat as stat10, writeFile as writeFile3 } from "fs/promises";
 import { dirname as dirname4, extname as extname3, join as join12, parse as parse8, resolve as resolve4 } from "path";
 var TINIFY_SHRINK_URL = "https://api.tinify.com/shrink";
 var ALLOWED_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"]);
@@ -24423,7 +24586,7 @@ async function tinifySinglePath(apiKey, path, replaceOriginal) {
     if (!fileStats.isFile()) {
       return { path, error: "Path is not a file." };
     }
-    const inputBytes = await readFile8(resolvedPath);
+    const inputBytes = await readFile9(resolvedPath);
     const shrinkResponse = await fetch(TINIFY_SHRINK_URL, {
       method: "POST",
       headers: {
@@ -25013,6 +25176,9 @@ app.post("/api/files/replace", async (c) => {
     inputSize: result.inputSize,
     outputSize: result.outputSize
   });
+});
+app.get("/api/stats/summary", async (c) => {
+  return c.json(summarizeStats(await readStatsEvents()));
 });
 app.post("/api/stats/events", async (c) => {
   const body = await c.req.json().catch(() => null);

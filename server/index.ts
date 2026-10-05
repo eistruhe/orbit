@@ -36,7 +36,9 @@ import { runSchemaViewerValidation } from "./schema-viewer.ts"
 import {
   formatFromPath,
   parseClientImageEvents,
+  readStatsEvents,
   recordStatsEvents,
+  summarizeStats,
   type StatsEventInput,
 } from "./stats.ts"
 import { tinifyPaths, validateTinifyApiKey } from "./tinify.ts"
@@ -840,6 +842,10 @@ app.post("/api/files/replace", async (c) => {
     inputSize: result.inputSize,
     outputSize: result.outputSize,
   })
+})
+
+app.get("/api/stats/summary", async (c) => {
+  return c.json(summarizeStats(await readStatsEvents()))
 })
 
 app.post("/api/stats/events", async (c) => {

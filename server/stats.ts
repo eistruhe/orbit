@@ -1,4 +1,4 @@
-import { appendFile, mkdir, stat } from "node:fs/promises"
+import { appendFile, mkdir, readFile, stat } from "node:fs/promises"
 import { basename, dirname, extname, join, resolve } from "node:path"
 
 import { CONFIG_DIR } from "./prefs.ts"
@@ -184,4 +184,253 @@ export function parseClientImageEvents(input: unknown): ImageStatsEvent[] {
   }
 
   return events
+}
+
+/** Reads all events; a missing log is empty, unparsable lines are skipped. */
+export async function readStatsEvents(): Promise<StatsEvent[]> {
+  await writeChain
+  let raw: string
+  try {
+    raw = await readFile(STATS_PATH, "utf8")
+  } catch {
+    return []
+  }
+
+  const events: StatsEvent[] = []
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue
+    try {
+      const parsed = JSON.parse(line) as Partial<StatsEvent>
+      if (
+        typeof parsed.type === "string" &&
+        typeof parsed.at === "string" &&
+        !Number.isNaN(Date.parse(parsed.at))
+      ) {
+        events.push(parsed as StatsEvent)
+      }
+    } catch {
+      // torn or hand-edited line
+    }
+  }
+  return events
+}
+
+const SERIES_DAYS = 30
+const QUOTA_HISTORY_MONTHS = 6
+const TOP_PROJECT_COUNT = 6
+const RECENT_RUN_COUNT = 8
+
+export type SavingsGroup = {
+  tool: ImageTool
+  formatIn: string
+  formatOut: string
+  files: number
+  bytesIn: number
+  bytesOut: number
+  /** Bytes saved per local day, oldest first, `seriesDays` long. */
+  dailySaved: number[]
+}
+
+export type RecentRun =
+  | (Pick<ImageStatsEvent, "type" | "tool" | "name" | "project" | "formatIn" | "formatOut" | "bytesIn" | "bytesOut"> & {
+      at: string
+    })
+  | (CleanupStatsEvent & { at: string })
+
+export type StatsSummary = {
+  /** Timestamp of the first recorded event; null while the log is empty. */
+  trackingSince: string | null
+  seriesDays: number
+  /** Same-format compression (Tinify, SVGO): the "weight reduced" total. */
+  compression: {
+    files: number
+    bytesIn: number
+    bytesOut: number
+    dailySaved: number[]
+    dailyFiles: number[]
+    groups: SavingsGroup[]
+  }
+  /** Format conversion at original size; kept out of the compression total. */
+  conversion: { groups: SavingsGroup[] }
+  cleanup: { runs: number; bytesFreed: number; daily: number[] }
+  tinifyQuota: {
+    /** Local calendar month, `YYYY-MM`. */
+    month: string
+    used: number | null
+    history: { month: string; used: number | null }[]
+  }
+  /** Projects by bytes saved through same-format compression. */
+  topProjects: { path: string; files: number; bytesSaved: number }[]
+  recent: RecentRun[]
+}
+
+function localDayKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+}
+
+function localMonthKey(date: Date): string {
+  return localDayKey(date).slice(0, 7)
+}
+
+function isImageEvent(event: StatsEvent): event is ImageStatsEvent & { v: number; at: string } {
+  return (
+    event.type === "image" &&
+    IMAGE_TOOLS.includes(event.tool) &&
+    isByteCount(event.bytesIn) &&
+    isByteCount(event.bytesOut)
+  )
+}
+
+/**
+ * Aggregates the raw log. Re-running a tool on the same original (same
+ * path or name, same input size, same output kind) replaces the earlier
+ * result instead of counting twice, so rewrites after a settings change or
+ * a copy after a download do not inflate the totals.
+ */
+export function summarizeStats(events: StatsEvent[], now = new Date()): StatsSummary {
+  const dayIndex = new Map<string, number>()
+  for (let index = 0; index < SERIES_DAYS; index += 1) {
+    const day = new Date(now)
+    day.setDate(day.getDate() - (SERIES_DAYS - 1 - index))
+    dayIndex.set(localDayKey(day), index)
+  }
+  const emptySeries = () => new Array<number>(SERIES_DAYS).fill(0)
+  const indexOfDay = (at: string) => dayIndex.get(localDayKey(new Date(at)))
+
+  const sorted = [...events].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+  const latestImages = new Map<string, ImageStatsEvent & { at: string }>()
+  const cleanups: (CleanupStatsEvent & { at: string })[] = []
+  const quotaByMonth = new Map<string, number>()
+
+  for (const event of sorted) {
+    if (isImageEvent(event)) {
+      const key = [
+        event.tool,
+        event.formatOut,
+        event.resized ? "resized" : "full",
+        event.path ?? event.name,
+        event.bytesIn,
+      ].join("|")
+      // Delete first so the map keeps insertion order = recency.
+      latestImages.delete(key)
+      latestImages.set(key, event)
+    } else if (event.type === "cleanup" && typeof event.project === "string") {
+      cleanups.push(event)
+    } else if (event.type === "tinify-quota" && isByteCount(event.compressionCount)) {
+      const month = localMonthKey(new Date(event.at))
+      quotaByMonth.set(month, Math.max(quotaByMonth.get(month) ?? 0, event.compressionCount))
+    }
+  }
+
+  const compressionGroups = new Map<string, SavingsGroup>()
+  const conversionGroups = new Map<string, SavingsGroup>()
+  const compression = {
+    files: 0,
+    bytesIn: 0,
+    bytesOut: 0,
+    dailySaved: emptySeries(),
+    dailyFiles: emptySeries(),
+  }
+  const projects = new Map<string, { files: number; bytesSaved: number }>()
+
+  for (const event of latestImages.values()) {
+    if (event.resized) continue
+    const isConversion = event.tool === "convert"
+    const groups = isConversion ? conversionGroups : compressionGroups
+    const groupKey = `${event.tool}|${event.formatIn}|${event.formatOut}`
+    const group = groups.get(groupKey) ?? {
+      tool: event.tool,
+      formatIn: event.formatIn,
+      formatOut: event.formatOut,
+      files: 0,
+      bytesIn: 0,
+      bytesOut: 0,
+      dailySaved: emptySeries(),
+    }
+    const saved = event.bytesIn - event.bytesOut
+    const day = indexOfDay(event.at)
+    group.files += 1
+    group.bytesIn += event.bytesIn
+    group.bytesOut += event.bytesOut
+    if (day !== undefined) group.dailySaved[day] += saved
+    groups.set(groupKey, group)
+
+    if (isConversion) continue
+    compression.files += 1
+    compression.bytesIn += event.bytesIn
+    compression.bytesOut += event.bytesOut
+    if (day !== undefined) {
+      compression.dailySaved[day] += saved
+      compression.dailyFiles[day] += 1
+    }
+    if (event.project) {
+      const project = projects.get(event.project) ?? { files: 0, bytesSaved: 0 }
+      project.files += 1
+      project.bytesSaved += saved
+      projects.set(event.project, project)
+    }
+  }
+
+  const bySaved = (a: SavingsGroup, b: SavingsGroup) =>
+    b.bytesIn - b.bytesOut - (a.bytesIn - a.bytesOut)
+
+  const cleanupDaily = emptySeries()
+  let bytesFreed = 0
+  for (const cleanup of cleanups) {
+    bytesFreed += cleanup.bytesFreed ?? 0
+    const day = indexOfDay(cleanup.at)
+    if (day !== undefined) cleanupDaily[day] += cleanup.bytesFreed ?? 0
+  }
+
+  const currentMonth = localMonthKey(now)
+  const history = Array.from({ length: QUOTA_HISTORY_MONTHS }, (_, index) => {
+    const month = localMonthKey(
+      new Date(now.getFullYear(), now.getMonth() - (QUOTA_HISTORY_MONTHS - 1 - index), 1),
+    )
+    return { month, used: quotaByMonth.get(month) ?? null }
+  })
+
+  const recent: RecentRun[] = [
+    ...[...latestImages.values()].map(
+      (event): RecentRun => ({
+        type: "image",
+        at: event.at,
+        tool: event.tool,
+        name: event.name,
+        project: event.project,
+        formatIn: event.formatIn,
+        formatOut: event.formatOut,
+        bytesIn: event.bytesIn,
+        bytesOut: event.bytesOut,
+      }),
+    ),
+    ...cleanups.map(
+      (event): RecentRun => ({
+        type: "cleanup",
+        at: event.at,
+        project: event.project,
+        bytesFreed: event.bytesFreed,
+      }),
+    ),
+  ]
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+    .slice(0, RECENT_RUN_COUNT)
+
+  return {
+    trackingSince: sorted[0]?.at ?? null,
+    seriesDays: SERIES_DAYS,
+    compression: { ...compression, groups: [...compressionGroups.values()].sort(bySaved) },
+    conversion: { groups: [...conversionGroups.values()].sort(bySaved) },
+    cleanup: { runs: cleanups.length, bytesFreed, daily: cleanupDaily },
+    tinifyQuota: {
+      month: currentMonth,
+      used: quotaByMonth.get(currentMonth) ?? null,
+      history,
+    },
+    topProjects: [...projects.entries()]
+      .map(([path, project]) => ({ path, ...project }))
+      .sort((a, b) => b.bytesSaved - a.bytesSaved)
+      .slice(0, TOP_PROJECT_COUNT),
+    recent,
+  }
 }

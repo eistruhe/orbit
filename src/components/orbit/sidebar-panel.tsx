@@ -1,4 +1,4 @@
-import { Activity, ChevronDown, ChevronRight, Folder, Pin, Search, Settings, Wrench } from "lucide-react"
+import { Activity, ChartNoAxesColumn, ChevronDown, ChevronRight, Folder, Pin, Search, Settings, Wrench } from "lucide-react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
 import { memo, startTransition, useMemo, useState } from "react"
 
@@ -198,6 +198,7 @@ export const SidebarPanel = memo(function SidebarPanel({
   const toolsActive = pathname.startsWith("/tools")
   const portsActive = pathname.startsWith("/ports")
   const searchActive = pathname.startsWith("/search")
+  const statsActive = pathname.startsWith("/stats")
   const settingsActive = pathname.startsWith("/settings")
   const [manualToolsExpanded, setManualToolsExpanded] = useState(false)
   const toolsExpanded = toolsActive || manualToolsExpanded
@@ -382,6 +383,16 @@ export const SidebarPanel = memo(function SidebarPanel({
               onClick={() =>
                 startTransition(() => {
                   navigate({ to: "/ports" })
+                })
+              }
+            />
+            <NavItem
+              icon={ChartNoAxesColumn}
+              label="Statistics"
+              active={statsActive}
+              onClick={() =>
+                startTransition(() => {
+                  navigate({ to: "/stats" })
                 })
               }
             />

@@ -611,6 +611,8 @@ export function OrbitApp() {
     allRepos,
     scanRoot,
     scannedAt,
+    scanMetaByLibrary,
+    loadingByLibrary,
     loading,
     error,
     query,

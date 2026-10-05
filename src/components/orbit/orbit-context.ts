@@ -18,6 +18,9 @@ export type OrbitContextValue = {
   allRepos: RepoRecord[]
   scanRoot: string | null
   scannedAt: string | null
+  /** Last successful scan per library id; missing until it was scanned. */
+  scanMetaByLibrary: Record<string, { scanRoot: string; scannedAt: string }>
+  loadingByLibrary: Record<string, boolean>
   loading: boolean
   error: string | null
   query: string

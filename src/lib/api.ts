@@ -563,6 +563,61 @@ export type ImageStatsEvent = {
   resized?: boolean
 }
 
+export type StatsImageTool = "tinify" | "svgo" | "convert"
+
+export type StatsSavingsGroup = {
+  tool: StatsImageTool
+  formatIn: string
+  formatOut: string
+  files: number
+  bytesIn: number
+  bytesOut: number
+  /** Bytes saved per local day, oldest first. */
+  dailySaved: number[]
+}
+
+export type StatsRecentRun =
+  | {
+      type: "image"
+      at: string
+      tool: StatsImageTool
+      name: string
+      project?: string
+      formatIn: string
+      formatOut: string
+      bytesIn: number
+      bytesOut: number
+    }
+  | { type: "cleanup"; at: string; project: string; bytesFreed: number | null }
+
+/** Aggregated statistics log, see `summarizeStats` in server/stats.ts. */
+export type StatsSummary = {
+  trackingSince: string | null
+  seriesDays: number
+  compression: {
+    files: number
+    bytesIn: number
+    bytesOut: number
+    dailySaved: number[]
+    dailyFiles: number[]
+    groups: StatsSavingsGroup[]
+  }
+  conversion: { groups: StatsSavingsGroup[] }
+  cleanup: { runs: number; bytesFreed: number; daily: number[] }
+  tinifyQuota: {
+    month: string
+    used: number | null
+    history: { month: string; used: number | null }[]
+  }
+  topProjects: { path: string; files: number; bytesSaved: number }[]
+  recent: StatsRecentRun[]
+}
+
+export async function fetchStatsSummary(): Promise<StatsSummary> {
+  const res = await fetch("/api/stats/summary")
+  return parseJson<StatsSummary>(res)
+}
+
 /**
  * Reports results of client-side image tools to the statistics log.
  * Fire-and-forget: failures are ignored so tools never break on stats.

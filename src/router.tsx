@@ -15,6 +15,7 @@ import { ProjectsLayout } from "@/components/orbit/projects-layout"
 import { SearchPage } from "@/components/orbit/search-page"
 import { SettingsLayout } from "@/components/orbit/settings-layout"
 import { SettingsPage } from "@/components/orbit/settings-page"
+import { StatsPage } from "@/components/orbit/stats-page"
 import { ClampPage } from "@/components/orbit/tools/clamp-page"
 import { CleanupPage } from "@/components/orbit/tools/cleanup-page"
 import { ColorConvertPage } from "@/components/orbit/tools/color-convert-page"
@@ -275,6 +276,20 @@ const portsIndexRoute = createRoute({
   component: PortsPage,
 })
 
+const statsLayoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/stats",
+  component: () => (
+    <PageLayout title="Statistics" subtitle="Savings & workspace" />
+  ),
+})
+
+const statsIndexRoute = createRoute({
+  getParentRoute: () => statsLayoutRoute,
+  path: "/",
+  component: StatsPage,
+})
+
 const searchLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/search",
@@ -340,6 +355,7 @@ const routeTree = rootRoute.addChildren([
     depsRoute,
   ]),
   portsLayoutRoute.addChildren([portsIndexRoute]),
+  statsLayoutRoute.addChildren([statsIndexRoute]),
   searchLayoutRoute.addChildren([searchIndexRoute]),
   settingsLayoutRoute.addChildren([settingsIndexRoute]),
 ])
