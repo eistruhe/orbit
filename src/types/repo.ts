@@ -37,6 +37,8 @@ export type Preferences = {
   additionalScanRoots: ProjectLibrary[]
   repoNotes: Record<string, string>
   repoTags: Record<string, string[]>
+  /** Live site per project (absolute http(s) URL), keyed by repo path. */
+  repoUrls: Record<string, string>
   appSettings: {
     tinify?: {
       apiKey?: string

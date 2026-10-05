@@ -42,6 +42,7 @@ import {
   type StatsEventInput,
 } from "./stats.ts"
 import { tinifyPaths, validateTinifyApiKey } from "./tinify.ts"
+import { isValidHttpUrl } from "./util.ts"
 
 /** Default avoids 8787 — commonly used by Wrangler and other local dev servers. */
 const PORT = (() => {
@@ -161,6 +162,15 @@ app.put("/api/preferences", async (c) => {
       ? Object.entries(body.repoNotes).filter(
           (entry): entry is [string, string] =>
             typeof entry[0] === "string" && typeof entry[1] === "string",
+        )
+      : null
+  const urlEntries =
+    body.repoUrls && typeof body.repoUrls === "object"
+      ? Object.entries(body.repoUrls).filter(
+          (entry): entry is [string, string] =>
+            typeof entry[0] === "string" &&
+            typeof entry[1] === "string" &&
+            isValidHttpUrl(entry[1]),
         )
       : null
   const tagEntries =
@@ -289,6 +299,7 @@ app.put("/api/preferences", async (c) => {
         : current.additionalScanRoots,
     repoNotes: noteEntries ? Object.fromEntries(noteEntries) : current.repoNotes,
     repoTags: tagEntries ? Object.fromEntries(tagEntries) : current.repoTags,
+    repoUrls: urlEntries ? Object.fromEntries(urlEntries) : current.repoUrls,
     appSettings: nextAppSettings,
   }
   await writePreferences(next)
@@ -508,6 +519,18 @@ app.get("/api/seo-audit", async (c) => {
   if (!result.ok) {
     return c.json({ error: result.error }, result.status as 400 | 500 | 502 | 504)
   }
+  const { checks, score } = result.data.audit
+  const tally = (status: string) => checks.filter((check) => check.status === status).length
+  void recordStatsEvents([
+    {
+      type: "seo-audit",
+      url: target as string,
+      score,
+      pass: tally("pass"),
+      warn: tally("warn"),
+      fail: tally("fail"),
+    },
+  ])
   return c.json(result.data)
 })
 
@@ -530,6 +553,55 @@ app.post("/api/schema/validate", async (c) => {
     return c.json({ error: result.error }, result.status as 400 | 500 | 502 | 504)
   }
   return c.json(result.data)
+})
+
+const ACTIVITY_DAYS = 30
+
+/**
+ * Commits per local day on the current branch over the last
+ * ACTIVITY_DAYS days, oldest first.
+ */
+async function getCommitActivity(repoPath: string): Promise<number[]> {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  start.setDate(start.getDate() - (ACTIVITY_DAYS - 1))
+  const { stdout } = await execFileAsync(
+    "git",
+    ["log", `--since=${start.toISOString()}`, "--format=%ct"],
+    { cwd: repoPath, env: process.env, maxBuffer: 4 * 1024 * 1024 },
+  )
+  const perDay = new Array<number>(ACTIVITY_DAYS).fill(0)
+  for (const line of stdout.split("\n")) {
+    const seconds = Number(line.trim())
+    if (!line.trim() || !Number.isFinite(seconds)) continue
+    const day = new Date(seconds * 1000)
+    day.setHours(0, 0, 0, 0)
+    const index = Math.round((day.getTime() - start.getTime()) / 86_400_000)
+    if (index >= 0 && index < ACTIVITY_DAYS) perDay[index] += 1
+  }
+  return perDay
+}
+
+app.get("/api/repo/activity", async (c) => {
+  const pathStr = c.req.query("path")
+  if (!pathStr) {
+    return c.json({ error: "Missing path" }, 400)
+  }
+
+  let safePath: string
+  try {
+    safePath = await resolvePathUnderAllowedRoots(pathStr, await getAllowedRoots())
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return c.json({ error: message }, 400)
+  }
+
+  try {
+    return c.json({ days: ACTIVITY_DAYS, commitsPerDay: await getCommitActivity(safePath) })
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return c.json({ error: message }, 500)
+  }
 })
 
 app.get("/api/repo/branches", async (c) => {
@@ -845,7 +917,9 @@ app.post("/api/files/replace", async (c) => {
 })
 
 app.get("/api/stats/summary", async (c) => {
-  return c.json(summarizeStats(await readStatsEvents()))
+  const project = c.req.query("project") || undefined
+  const siteUrl = c.req.query("site") || undefined
+  return c.json(summarizeStats(await readStatsEvents(), new Date(), { project, siteUrl }))
 })
 
 app.post("/api/stats/events", async (c) => {

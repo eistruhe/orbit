@@ -190,6 +190,10 @@ html[data-backdrop="image"] .filter-group {
     user-select: text;
     cursor: text;
   }
+  /* Links and buttons inside selectable text still look clickable. */
+  [data-selectable] :is(a, button, a *, button *) {
+    cursor: pointer;
+  }
   body {
     @apply bg-background text-foreground;
     font-family: "Geist Mono Variable", ui-monospace, monospace;

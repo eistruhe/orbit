@@ -611,11 +611,41 @@ export type StatsSummary = {
   }
   topProjects: { path: string; files: number; bytesSaved: number }[]
   recent: StatsRecentRun[]
+  /** Latest recorded audit of the requested `site`; null without one. */
+  seoAudit: {
+    at: string
+    url: string
+    score: number
+    pass: number
+    warn: number
+    fail: number
+  } | null
 }
 
-export async function fetchStatsSummary(): Promise<StatsSummary> {
-  const res = await fetch("/api/stats/summary")
+/**
+ * Aggregated statistics; `project` limits savings and runs to one git
+ * project, `site` adds the latest SEO audit of that URL.
+ */
+export async function fetchStatsSummary(
+  options: { project?: string; site?: string } = {},
+): Promise<StatsSummary> {
+  const params = new URLSearchParams()
+  if (options.project) params.set("project", options.project)
+  if (options.site) params.set("site", options.site)
+  const query = params.toString()
+  const res = await fetch(`/api/stats/summary${query ? `?${query}` : ""}`)
   return parseJson<StatsSummary>(res)
+}
+
+export type RepoActivity = {
+  days: number
+  /** Commits per local day on the current branch, oldest first. */
+  commitsPerDay: number[]
+}
+
+export async function fetchRepoActivity(path: string): Promise<RepoActivity> {
+  const res = await fetch(`/api/repo/activity?${new URLSearchParams({ path }).toString()}`)
+  return parseJson<RepoActivity>(res)
 }
 
 /**

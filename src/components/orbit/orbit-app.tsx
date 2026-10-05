@@ -359,6 +359,7 @@ export function OrbitApp() {
   }, [repos])
 
   const repoNotes = useMemo(() => prefs?.repoNotes ?? {}, [prefs?.repoNotes])
+  const repoUrls = useMemo(() => prefs?.repoUrls ?? {}, [prefs?.repoUrls])
   const repoTags = useMemo(() => prefs?.repoTags ?? {}, [prefs?.repoTags])
 
   const tagOptions = useMemo(() => {
@@ -536,11 +537,17 @@ export function OrbitApp() {
   }, [metaSaving])
 
   const saveMetadata = useCallback(
-    async (tagsInput: string, noteInput: string) => {
+    async (tagsInput: string, noteInput: string, liveUrl: string) => {
       if (!prefs || !metaDialogPath || metaSaving) return
 
       const safeRepoTags = prefs.repoTags ?? {}
       const safeRepoNotes = prefs.repoNotes ?? {}
+      const nextRepoUrls = { ...(prefs.repoUrls ?? {}) }
+      if (liveUrl) {
+        nextRepoUrls[metaDialogPath] = liveUrl
+      } else {
+        delete nextRepoUrls[metaDialogPath]
+      }
       const nextTags = [
         ...new Set(
           tagsInput
@@ -571,6 +578,7 @@ export function OrbitApp() {
           ...prefs,
           repoTags: nextRepoTags,
           repoNotes: nextRepoNotes,
+          repoUrls: nextRepoUrls,
         })
         setPrefs(next)
         cue("success", { emphasis: "subtle" })
@@ -633,6 +641,7 @@ export function OrbitApp() {
     repoByPath,
     repoNotes,
     repoTags,
+    repoUrls,
     devServers,
     devServersByPath,
     refreshDevServers,
@@ -696,6 +705,7 @@ export function OrbitApp() {
             repoName={repoByPath.get(metaDialogPath)?.name ?? metaDialogPath}
             initialTags={prefs.repoTags?.[metaDialogPath]?.join(", ") ?? ""}
             initialNote={prefs.repoNotes?.[metaDialogPath] ?? ""}
+            initialLiveUrl={prefs.repoUrls?.[metaDialogPath] ?? ""}
             saving={metaSaving}
             onClose={closeMetadataDialog}
             onSave={saveMetadata}

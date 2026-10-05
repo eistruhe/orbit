@@ -41,6 +41,7 @@ export type OrbitContextValue = {
   repoByPath: Map<string, RepoRecord>
   repoNotes: Record<string, string>
   repoTags: Record<string, string[]>
+  repoUrls: Record<string, string>
   devServers: DevServerInfo[]
   /** Active (starting/running) dev servers keyed by repo path. */
   devServersByPath: Map<string, DevServerInfo>

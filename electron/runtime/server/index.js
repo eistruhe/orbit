@@ -22007,6 +22007,7 @@ var defaultPreferences = () => ({
   additionalScanRoots: [],
   repoNotes: {},
   repoTags: {},
+  repoUrls: {},
   appSettings: {}
 });
 function parseAdditionalScanRoots(input) {
@@ -22062,6 +22063,7 @@ async function readPreferences() {
         path,
         Array.isArray(tags) ? tags.filter((tag) => typeof tag === "string") : []
       ])) : {},
+      repoUrls: parsed.repoUrls && typeof parsed.repoUrls === "object" ? Object.fromEntries(Object.entries(parsed.repoUrls).filter((entry) => typeof entry[0] === "string" && typeof entry[1] === "string")) : {},
       appSettings: parseAppSettings(parsed.appSettings)
     };
   } catch {
@@ -24400,6 +24402,14 @@ var SERIES_DAYS = 30;
 var QUOTA_HISTORY_MONTHS = 6;
 var TOP_PROJECT_COUNT = 6;
 var RECENT_RUN_COUNT = 8;
+function normalizeSiteUrl(value) {
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, "")}`.toLowerCase();
+  } catch {
+    return null;
+  }
+}
 function localDayKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -24409,7 +24419,7 @@ function localMonthKey(date) {
 function isImageEvent(event) {
   return event.type === "image" && IMAGE_TOOLS.includes(event.tool) && isByteCount(event.bytesIn) && isByteCount(event.bytesOut);
 }
-function summarizeStats(events, now = new Date) {
+function summarizeStats(events, now = new Date, options = {}) {
   const dayIndex = new Map;
   for (let index2 = 0;index2 < SERIES_DAYS; index2 += 1) {
     const day = new Date(now);
@@ -24422,8 +24432,13 @@ function summarizeStats(events, now = new Date) {
   const latestImages = new Map;
   const cleanups = [];
   const quotaByMonth = new Map;
+  const siteKey = options.siteUrl ? normalizeSiteUrl(options.siteUrl) : null;
+  let seoAudit = null;
+  const inProject = (project) => !options.project || project === options.project;
   for (const event of sorted) {
     if (isImageEvent(event)) {
+      if (!inProject(event.project))
+        continue;
       const key = [
         event.tool,
         event.formatOut,
@@ -24434,10 +24449,20 @@ function summarizeStats(events, now = new Date) {
       latestImages.delete(key);
       latestImages.set(key, event);
     } else if (event.type === "cleanup" && typeof event.project === "string") {
-      cleanups.push(event);
+      if (inProject(event.project))
+        cleanups.push(event);
     } else if (event.type === "tinify-quota" && isByteCount(event.compressionCount)) {
       const month = localMonthKey(new Date(event.at));
       quotaByMonth.set(month, Math.max(quotaByMonth.get(month) ?? 0, event.compressionCount));
+    } else if (event.type === "seo-audit" && siteKey && typeof event.url === "string" && normalizeSiteUrl(event.url) === siteKey) {
+      seoAudit = {
+        at: event.at,
+        url: event.url,
+        score: event.score,
+        pass: event.pass,
+        warn: event.warn,
+        fail: event.fail
+      };
     }
   }
   const compressionGroups = new Map;
@@ -24534,7 +24559,8 @@ function summarizeStats(events, now = new Date) {
       history
     },
     topProjects: [...projects.entries()].map(([path, project]) => ({ path, ...project })).sort((a, b) => b.bytesSaved - a.bytesSaved).slice(0, TOP_PROJECT_COUNT),
-    recent
+    recent,
+    seoAudit
   };
 }
 
@@ -24742,6 +24768,7 @@ app.put("/api/preferences", async (c) => {
   }
   const current = await readPreferences();
   const noteEntries = body.repoNotes && typeof body.repoNotes === "object" ? Object.entries(body.repoNotes).filter((entry) => typeof entry[0] === "string" && typeof entry[1] === "string") : null;
+  const urlEntries = body.repoUrls && typeof body.repoUrls === "object" ? Object.entries(body.repoUrls).filter((entry) => typeof entry[0] === "string" && typeof entry[1] === "string" && isValidHttpUrl(entry[1])) : null;
   const tagEntries = body.repoTags && typeof body.repoTags === "object" ? Object.entries(body.repoTags).map(([path, tags]) => [
     path,
     Array.isArray(tags) ? tags.filter((tag) => typeof tag === "string") : []
@@ -24774,6 +24801,7 @@ app.put("/api/preferences", async (c) => {
     additionalScanRoots: body.additionalScanRoots !== undefined ? parseAdditionalScanRoots2(body.additionalScanRoots) : current.additionalScanRoots,
     repoNotes: noteEntries ? Object.fromEntries(noteEntries) : current.repoNotes,
     repoTags: tagEntries ? Object.fromEntries(tagEntries) : current.repoTags,
+    repoUrls: urlEntries ? Object.fromEntries(urlEntries) : current.repoUrls,
     appSettings: nextAppSettings
   };
   await writePreferences(next2);
@@ -24919,6 +24947,18 @@ app.get("/api/seo-audit", async (c) => {
   if (!result.ok) {
     return c.json({ error: result.error }, result.status);
   }
+  const { checks, score } = result.data.audit;
+  const tally = (status) => checks.filter((check) => check.status === status).length;
+  recordStatsEvents([
+    {
+      type: "seo-audit",
+      url: target,
+      score,
+      pass: tally("pass"),
+      warn: tally("warn"),
+      fail: tally("fail")
+    }
+  ]);
   return c.json(result.data);
 });
 app.post("/api/schema/validate", async (c) => {
@@ -24933,6 +24973,45 @@ app.post("/api/schema/validate", async (c) => {
     return c.json({ error: result.error }, result.status);
   }
   return c.json(result.data);
+});
+var ACTIVITY_DAYS = 30;
+async function getCommitActivity(repoPath) {
+  const start = new Date;
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - (ACTIVITY_DAYS - 1));
+  const { stdout } = await execFileAsync5("git", ["log", `--since=${start.toISOString()}`, "--format=%ct"], { cwd: repoPath, env: process.env, maxBuffer: 4 * 1024 * 1024 });
+  const perDay = new Array(ACTIVITY_DAYS).fill(0);
+  for (const line of stdout.split(`
+`)) {
+    const seconds = Number(line.trim());
+    if (!line.trim() || !Number.isFinite(seconds))
+      continue;
+    const day = new Date(seconds * 1000);
+    day.setHours(0, 0, 0, 0);
+    const index2 = Math.round((day.getTime() - start.getTime()) / 86400000);
+    if (index2 >= 0 && index2 < ACTIVITY_DAYS)
+      perDay[index2] += 1;
+  }
+  return perDay;
+}
+app.get("/api/repo/activity", async (c) => {
+  const pathStr = c.req.query("path");
+  if (!pathStr) {
+    return c.json({ error: "Missing path" }, 400);
+  }
+  let safePath;
+  try {
+    safePath = await resolvePathUnderAllowedRoots(pathStr, await getAllowedRoots());
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return c.json({ error: message }, 400);
+  }
+  try {
+    return c.json({ days: ACTIVITY_DAYS, commitsPerDay: await getCommitActivity(safePath) });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return c.json({ error: message }, 500);
+  }
 });
 app.get("/api/repo/branches", async (c) => {
   const pathStr = c.req.query("path");
@@ -25178,7 +25257,9 @@ app.post("/api/files/replace", async (c) => {
   });
 });
 app.get("/api/stats/summary", async (c) => {
-  return c.json(summarizeStats(await readStatsEvents()));
+  const project = c.req.query("project") || undefined;
+  const siteUrl = c.req.query("site") || undefined;
+  return c.json(summarizeStats(await readStatsEvents(), new Date, { project, siteUrl }));
 });
 app.post("/api/stats/events", async (c) => {
   const body = await c.req.json().catch(() => null);

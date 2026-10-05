@@ -1,7 +1,8 @@
-import { ExternalLink, Loader2, Play, Square, TerminalSquare } from "lucide-react"
+import { ExternalLink, Loader2, Play, Square } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useOrbit } from "@/components/orbit/orbit-context"
+import { PanelTag } from "@/components/orbit/stats-primitives"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -194,13 +195,8 @@ export function DevServerSection({ repo }: { repo: RepoRecord }) {
 
   return (
     <section className="border border-border bg-card">
-      <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
-        <div className="flex items-center gap-2">
-          <TerminalSquare className="size-3.5 text-muted-foreground" aria-hidden />
-          <h2 className="text-[10px] uppercase tracking-[0.16em] text-foreground">
-            [Dev Server]
-          </h2>
-        </div>
+      <header className="flex h-9 items-center justify-between gap-3 border-b border-border/60 px-3">
+        <PanelTag>Dev server</PanelTag>
         <span
           className={cn(
             "inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em]",

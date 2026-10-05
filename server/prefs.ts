@@ -15,6 +15,8 @@ export type Preferences = {
   additionalScanRoots: ProjectLibrary[]
   repoNotes: Record<string, string>
   repoTags: Record<string, string[]>
+  /** Live site per project (absolute http(s) URL), keyed by repo path. */
+  repoUrls: Record<string, string>
   appSettings: {
     tinify?: {
       apiKey?: string
@@ -46,6 +48,7 @@ const defaultPreferences = (): Preferences => ({
   additionalScanRoots: [],
   repoNotes: {},
   repoTags: {},
+  repoUrls: {},
   appSettings: {},
 })
 
@@ -156,6 +159,15 @@ export async function readPreferences(): Promise<Preferences> {
                   ? tags.filter((tag): tag is string => typeof tag === "string")
                   : [],
               ]),
+            )
+          : {},
+      repoUrls:
+        parsed.repoUrls && typeof parsed.repoUrls === "object"
+          ? Object.fromEntries(
+              Object.entries(parsed.repoUrls).filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[0] === "string" && typeof entry[1] === "string",
+              ),
             )
           : {},
       appSettings: parseAppSettings(parsed.appSettings),

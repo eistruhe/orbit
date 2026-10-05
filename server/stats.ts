@@ -53,7 +53,21 @@ export type TinifyQuotaStatsEvent = {
   compressionCount: number
 }
 
-export type StatsEventInput = ImageStatsEvent | CleanupStatsEvent | TinifyQuotaStatsEvent
+/** Result of an SEO audit, so a project's live site can show its last score. */
+export type SeoAuditStatsEvent = {
+  type: "seo-audit"
+  url: string
+  score: number
+  pass: number
+  warn: number
+  fail: number
+}
+
+export type StatsEventInput =
+  | ImageStatsEvent
+  | CleanupStatsEvent
+  | TinifyQuotaStatsEvent
+  | SeoAuditStatsEvent
 export type StatsEvent = StatsEventInput & { v: number; at: string }
 
 /** Lowercase extension without the dot; `jpeg` is folded into `jpg`. */
@@ -262,6 +276,25 @@ export type StatsSummary = {
   /** Projects by bytes saved through same-format compression. */
   topProjects: { path: string; files: number; bytesSaved: number }[]
   recent: RecentRun[]
+  /** Latest audit of `options.siteUrl`; null when none was recorded. */
+  seoAudit: (Omit<SeoAuditStatsEvent, "type"> & { at: string }) | null
+}
+
+export type SummarizeOptions = {
+  /** Only count image and cleanup events of this git project. */
+  project?: string
+  /** Live site whose latest SEO audit to include. */
+  siteUrl?: string
+}
+
+/** Origin + path without trailing slash, so "x.com" and "x.com/" match. */
+function normalizeSiteUrl(value: string): string | null {
+  try {
+    const url = new URL(value)
+    return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, "")}`.toLowerCase()
+  } catch {
+    return null
+  }
 }
 
 function localDayKey(date: Date): string {
@@ -287,7 +320,11 @@ function isImageEvent(event: StatsEvent): event is ImageStatsEvent & { v: number
  * result instead of counting twice, so rewrites after a settings change or
  * a copy after a download do not inflate the totals.
  */
-export function summarizeStats(events: StatsEvent[], now = new Date()): StatsSummary {
+export function summarizeStats(
+  events: StatsEvent[],
+  now = new Date(),
+  options: SummarizeOptions = {},
+): StatsSummary {
   const dayIndex = new Map<string, number>()
   for (let index = 0; index < SERIES_DAYS; index += 1) {
     const day = new Date(now)
@@ -301,9 +338,14 @@ export function summarizeStats(events: StatsEvent[], now = new Date()): StatsSum
   const latestImages = new Map<string, ImageStatsEvent & { at: string }>()
   const cleanups: (CleanupStatsEvent & { at: string })[] = []
   const quotaByMonth = new Map<string, number>()
+  const siteKey = options.siteUrl ? normalizeSiteUrl(options.siteUrl) : null
+  let seoAudit: StatsSummary["seoAudit"] = null
+  const inProject = (project: string | undefined) =>
+    !options.project || project === options.project
 
   for (const event of sorted) {
     if (isImageEvent(event)) {
+      if (!inProject(event.project)) continue
       const key = [
         event.tool,
         event.formatOut,
@@ -315,10 +357,24 @@ export function summarizeStats(events: StatsEvent[], now = new Date()): StatsSum
       latestImages.delete(key)
       latestImages.set(key, event)
     } else if (event.type === "cleanup" && typeof event.project === "string") {
-      cleanups.push(event)
+      if (inProject(event.project)) cleanups.push(event)
     } else if (event.type === "tinify-quota" && isByteCount(event.compressionCount)) {
       const month = localMonthKey(new Date(event.at))
       quotaByMonth.set(month, Math.max(quotaByMonth.get(month) ?? 0, event.compressionCount))
+    } else if (
+      event.type === "seo-audit" &&
+      siteKey &&
+      typeof event.url === "string" &&
+      normalizeSiteUrl(event.url) === siteKey
+    ) {
+      seoAudit = {
+        at: event.at,
+        url: event.url,
+        score: event.score,
+        pass: event.pass,
+        warn: event.warn,
+        fail: event.fail,
+      }
     }
   }
 
@@ -432,5 +488,6 @@ export function summarizeStats(events: StatsEvent[], now = new Date()): StatsSum
       .sort((a, b) => b.bytesSaved - a.bytesSaved)
       .slice(0, TOP_PROJECT_COUNT),
     recent,
+    seoAudit,
   }
 }

@@ -12,31 +12,53 @@ type MetadataDialogProps = {
   /** Comma-separated tags when the dialog opens. */
   initialTags: string
   initialNote: string
+  initialLiveUrl: string
   saving: boolean
   onClose: () => void
-  onSave: (tagsInput: string, noteInput: string) => void | Promise<void>
+  /** `liveUrl` is normalized (https:// added) or empty to remove it. */
+  onSave: (tagsInput: string, noteInput: string, liveUrl: string) => void | Promise<void>
+}
+
+/** Adds https:// when missing; null for anything that is not an http(s) URL. */
+function normalizeLiveUrl(input: string): string | null {
+  const trimmed = input.trim()
+  if (!trimmed) return ""
+  const withScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+  try {
+    const url = new URL(withScheme)
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null
+    if (!url.hostname.includes(".") && url.hostname !== "localhost") return null
+    return url.toString()
+  } catch {
+    return null
+  }
 }
 
 /**
- * Sharp-edged mono modal for editing per-repo tags and notes.
+ * Sharp-edged mono modal for editing per-repo tags, notes and live URL.
  */
 export function MetadataDialog({
   path,
   repoName,
   initialTags,
   initialNote,
+  initialLiveUrl,
   saving,
   onClose,
   onSave,
 }: MetadataDialogProps) {
   const [tagsInput, setTagsInput] = useState(initialTags)
   const [noteInput, setNoteInput] = useState(initialNote)
+  const [liveUrlInput, setLiveUrlInput] = useState(initialLiveUrl)
+  const [liveUrlError, setLiveUrlError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!path) return
     setTagsInput(initialTags)
     setNoteInput(initialNote)
-  }, [path, initialTags, initialNote])
+    setLiveUrlInput(initialLiveUrl)
+    setLiveUrlError(null)
+  }, [path, initialTags, initialNote, initialLiveUrl])
 
   if (!path) return null
 
@@ -51,7 +73,12 @@ export function MetadataDialog({
         className="space-y-3 p-3"
         onSubmit={(event) => {
           event.preventDefault()
-          void onSave(tagsInput, noteInput)
+          const liveUrl = normalizeLiveUrl(liveUrlInput)
+          if (liveUrl === null) {
+            setLiveUrlError("Enter a web address like www.example.com")
+            return
+          }
+          void onSave(tagsInput, noteInput, liveUrl)
         }}
       >
         <div className="space-y-1">
@@ -75,6 +102,23 @@ export function MetadataDialog({
             rows={3}
             placeholder="Optional project note..."
           />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+            Live URL <span className="text-muted-foreground/60">(for SSL and SEO on the project page)</span>
+          </label>
+          <Input
+            value={liveUrlInput}
+            onChange={(event) => {
+              setLiveUrlInput(event.target.value)
+              setLiveUrlError(null)
+            }}
+            placeholder="www.example.com"
+            aria-invalid={liveUrlError ? true : undefined}
+          />
+          {liveUrlError ? (
+            <p className="text-[10px] text-destructive">{liveUrlError}</p>
+          ) : null}
         </div>
         <div className="flex items-center justify-end gap-2">
           <Button

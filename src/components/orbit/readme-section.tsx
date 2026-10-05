@@ -1,6 +1,7 @@
-import { BookOpen, ChevronDown, ChevronRight, Loader2 } from "lucide-react"
+import { ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import { Suspense, lazy, useEffect, useRef, useState } from "react"
 
+import { PanelTag } from "@/components/orbit/stats-primitives"
 import { type RepoReadmeResponse, fetchRepoReadme } from "@/lib/api"
 
 const ReadmeMarkdown = lazy(() => import("@/components/orbit/readme-markdown"))
@@ -13,8 +14,9 @@ type ReadmeState =
   | { kind: "loaded"; readme: RepoReadmeResponse }
 
 /**
- * `[Readme]` panel on the project detail page, expanded by default. The file
- * and the markdown renderer load lazily once the panel is expanded.
+ * README panel on the project detail page, expanded by default. The file
+ * and the markdown renderer load lazily once the panel is expanded; the
+ * rendered text is selectable.
  */
 export function ReadmeSection({ repoPath }: { repoPath: string }) {
   const [expanded, setExpanded] = useState(true)
@@ -62,29 +64,26 @@ export function ReadmeSection({ repoPath }: { repoPath: string }) {
         type="button"
         onClick={() => setExpanded((value) => !value)}
         aria-expanded={expanded}
-        className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted/40"
+        className="flex h-9 w-full items-center justify-between gap-3 px-3 text-left transition-colors hover:bg-muted/40"
       >
-        <span className="flex items-center gap-2">
-          <BookOpen className="size-3.5 text-muted-foreground" aria-hidden />
-          <span className="text-[10px] uppercase tracking-[0.16em] text-foreground">
-            [Readme]
-          </span>
+        <PanelTag>Readme</PanelTag>
+        <span className="flex items-center gap-2 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
           {state.kind === "loaded" ? (
-            <span className="font-mono text-[9px] text-muted-foreground">
+            <span className="normal-case">
               {state.readme.fileName}
               {state.readme.truncated ? " · truncated" : ""}
             </span>
           ) : null}
+          {expanded ? (
+            <ChevronDown className="size-3" aria-hidden />
+          ) : (
+            <ChevronRight className="size-3" aria-hidden />
+          )}
         </span>
-        {expanded ? (
-          <ChevronDown className="size-3 text-muted-foreground" aria-hidden />
-        ) : (
-          <ChevronRight className="size-3 text-muted-foreground" aria-hidden />
-        )}
       </button>
 
       {expanded ? (
-        <div className="border-t border-border p-3">
+        <div className="border-t border-border/60 p-3">
           {state.kind === "loading" || state.kind === "idle" ? (
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" />
@@ -105,7 +104,9 @@ export function ReadmeSection({ repoPath }: { repoPath: string }) {
                 </div>
               }
             >
-              <ReadmeMarkdown content={state.readme.content} />
+              <div data-selectable>
+                <ReadmeMarkdown content={state.readme.content} />
+              </div>
             </Suspense>
           )}
         </div>
