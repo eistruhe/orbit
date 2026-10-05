@@ -230,6 +230,10 @@ html[data-backdrop="image"] .filter-group {
     border: 2px solid transparent;
     background-clip: padding-box;
   }
+  /* Main scroller: the track starts below the h-12 page header overlaying it. */
+  .app-scroll::-webkit-scrollbar-track {
+    margin-top: 3rem;
+  }
 }
 
 @layer components {
@@ -292,7 +296,7 @@ html[data-backdrop="image"] .filter-group {
   }
 
   /*
-   * App chrome (sidebar and sticky page headers) shares one surface so both
+   * App chrome (sidebar and page headers) shares one surface so both
    * read as the same material. Headers need the blur in tinted mode too,
    * since page content scrolls underneath them.
    */

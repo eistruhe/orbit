@@ -24,7 +24,7 @@ export function ToolsLayout() {
 
   return (
     <>
-      <header className="app-drag sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border px-3 surface-chrome">
+      <header className="app-drag absolute inset-x-0 top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border px-3 surface-chrome">
         <span className="size-1.5 bg-highlight shadow-[0_0_8px_var(--highlight)]" aria-hidden />
         <h2 className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground">
           Tools

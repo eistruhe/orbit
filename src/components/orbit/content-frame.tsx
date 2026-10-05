@@ -14,7 +14,7 @@ type ContentFrameProps = {
 }
 
 /**
- * Shared content column for every layout below the sticky page header, so
+ * Shared content column for every layout below the page header, so
  * all views share the same widths, gutters, and alignment.
  */
 export function ContentFrame({

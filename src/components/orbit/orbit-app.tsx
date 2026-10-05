@@ -691,12 +691,20 @@ export function OrbitApp() {
             onOpenExternal={openExternal}
           />
 
-          <main
-            id={APP_SCROLL_CONTAINER_ID}
-            className="flex h-svh min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]"
-          >
-            <Outlet />
-          </main>
+          {/*
+            The layouts' absolute page headers are positioned against this wrapper,
+            not <main>: they span the scrollbar gutter up to the window edge
+            while content scrolls underneath. The scrollbar track starts
+            below them (`.app-scroll` in index.css).
+          */}
+          <div className="relative flex h-svh min-w-0 flex-1 flex-col">
+            <main
+              id={APP_SCROLL_CONTAINER_ID}
+              className="app-scroll flex min-h-0 flex-1 flex-col overflow-y-auto pt-12 scroll-pt-12 [scrollbar-gutter:stable]"
+            >
+              <Outlet />
+            </main>
+          </div>
         </div>
         <CommandPalette />
         {metaDialogPath ? (
