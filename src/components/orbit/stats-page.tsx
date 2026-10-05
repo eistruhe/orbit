@@ -8,22 +8,21 @@ import {
   DotColumns,
   EmptyHint,
   KpiCell,
-  Leader,
   Panel,
   SegmentBar,
   StatRow,
   SubLabel,
-  ToolBadge,
 } from "@/components/orbit/stats-primitives"
-import { Button } from "@/components/ui/button"
 import {
-  type StatsImageTool,
-  type StatsRecentRun,
-  type StatsSavingsGroup,
-  type StatsSummary,
-  fetchStatsSummary,
-} from "@/lib/api"
-import { formatBytes } from "@/lib/format-size"
+  RecentRunsTable,
+  SavingsHeader,
+  SavingsRows,
+  TABLE_HEAD,
+  TABLE_ROW,
+} from "@/components/orbit/stats-tables"
+import { Button } from "@/components/ui/button"
+import { type StatsSummary, fetchStatsSummary } from "@/lib/api"
+import { baseName, bytes, count, formatLabel, reduction, shortDate, sum } from "@/lib/stats-format"
 import { formatRelativeFromIso } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import type { RepoRecord } from "@/types/repo"
@@ -36,35 +35,9 @@ const MONTH_SEC = 30 * DAY_SEC
 const TINIFY_FREE_LIMIT = 500
 const STACK_ROWS = 7
 
-const TOOL_LABELS: Record<StatsImageTool | "cleanup", string> = {
-  tinify: "Tinify",
-  svgo: "SVGO",
-  convert: "Convert",
-  cleanup: "Cleanup",
-}
-
-const sum = (values: number[]) => values.reduce((total, value) => total + value, 0)
-const bytes = (value: number) =>
-  value < 0 ? `−${formatBytes(Math.round(-value))}` : (formatBytes(Math.round(value)) ?? "—")
-const count = (value: number) => value.toLocaleString("en-GB")
-const reduction = (before: number, after: number) => {
-  if (before <= 0) return "—"
-  const percent = Math.round((1 - after / before) * 100)
-  return percent >= 0 ? `−${percent}%` : `+${-percent}%`
-}
-const baseName = (path: string) => path.split("/").filter(Boolean).pop() ?? path
-const formatLabel = (format: string) => (format === "webp" ? "WebP" : format.toUpperCase())
-
 function monthFromKey(key: string): Date {
   const [year, month] = key.split("-").map(Number)
   return new Date(year, month - 1, 1)
-}
-
-function runTime(iso: string, now: Date): string {
-  const date = new Date(iso)
-  return date.toDateString() === now.toDateString()
-    ? date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
-    : date.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
 }
 
 /**
@@ -79,86 +52,7 @@ function tinifyLimitAtPace(used: number, now: Date): Date | null {
   return new Date(now.getFullYear(), now.getMonth(), Math.ceil(TINIFY_FREE_LIMIT / perDay))
 }
 
-const SAVINGS_GRID =
-  "grid grid-cols-[6.5rem_minmax(0,1fr)_auto_3.5rem_3rem_4.25rem] items-center gap-x-3"
-
-function SavingsRows({
-  groups,
-  conversion = false,
-}: {
-  groups: StatsSavingsGroup[]
-  conversion?: boolean
-}) {
-  return groups.map((group) => (
-    <div
-      key={`${group.tool}|${group.formatIn}|${group.formatOut}`}
-      className={cn(SAVINGS_GRID, "py-[5px] text-[11px]")}
-    >
-      <span className="flex items-baseline gap-2 truncate">
-        {conversion ? (
-          <span className="text-foreground">
-            {formatLabel(group.formatIn)} → {formatLabel(group.formatOut)}
-          </span>
-        ) : (
-          <>
-            <span className="text-foreground">{formatLabel(group.formatIn)}</span>
-            <span className="text-[9px] uppercase tracking-[0.08em] text-muted-foreground">
-              {TOOL_LABELS[group.tool]}
-            </span>
-          </>
-        )}
-      </span>
-      <Leader />
-      <DotColumns values={group.dailySaved} />
-      <span className="text-right tabular-nums text-muted-foreground">{count(group.files)}</span>
-      <span className="text-right tabular-nums text-muted-foreground">
-        {reduction(group.bytesIn, group.bytesOut)}
-      </span>
-      <span className="text-right tabular-nums text-foreground">
-        {bytes(group.bytesIn - group.bytesOut)}
-      </span>
-    </div>
-  ))
-}
-
-const TABLE_HEAD =
-  "border-b border-border text-[10px] uppercase tracking-[0.08em] text-muted-foreground [&>div]:px-2 [&>div]:py-2"
-const TABLE_ROW =
-  "items-center border-b border-border/60 text-[11px] last:border-b-0 [&>div]:px-2 [&>div]:py-1.5"
 const PROJECTS_GRID = "grid grid-cols-[2rem_minmax(0,1fr)_3.5rem_4.5rem_5.5rem]"
-const RUNS_GRID = "grid grid-cols-[3.75rem_4.25rem_minmax(0,1fr)_8.5rem_3.25rem]"
-
-function RecentRunRow({ run, now }: { run: StatsRecentRun; now: Date }) {
-  const project = run.project ? baseName(run.project) : null
-  const file =
-    run.type === "cleanup"
-      ? "node_modules"
-      : run.tool === "convert"
-        ? `${run.name} → .${run.formatOut}`
-        : run.name
-  return (
-    <div className={cn(RUNS_GRID, TABLE_ROW)}>
-      <div className="tabular-nums text-muted-foreground">{runTime(run.at, now)}</div>
-      <div>
-        <ToolBadge tool={TOOL_LABELS[run.type === "cleanup" ? "cleanup" : run.tool]} />
-      </div>
-      <div className="truncate" title={run.project ? `${run.project} · ${file}` : file}>
-        <span className="text-foreground">{file}</span>
-        {project ? <span className="ml-2 text-[10px] text-muted-foreground">{project}</span> : null}
-      </div>
-      <div className="text-right tabular-nums text-muted-foreground">
-        {run.type === "cleanup"
-          ? run.bytesFreed == null
-            ? "freed"
-            : `${bytes(run.bytesFreed)} freed`
-          : `${bytes(run.bytesIn)} → ${bytes(run.bytesOut)}`}
-      </div>
-      <div className="text-right tabular-nums text-foreground">
-        {run.type === "cleanup" ? "—" : reduction(run.bytesIn, run.bytesOut)}
-      </div>
-    </div>
-  )
-}
 
 /**
  * Statistics: lifetime savings from the image tools and cleanups (from the
@@ -443,13 +337,8 @@ export function StatsPage() {
                 </span>
               </div>
 
-              <div className={cn(SAVINGS_GRID, "mt-4 border-b border-border/60 pb-1.5")}>
-                <SubLabel>Same format</SubLabel>
-                <span />
-                <span />
-                <span className="text-right"><SubLabel>Files</SubLabel></span>
-                <span className="text-right"><SubLabel>Δ</SubLabel></span>
-                <span className="text-right"><SubLabel>Saved</SubLabel></span>
+              <div className="mt-4">
+                <SavingsHeader label="Same format" />
               </div>
               <div className="py-1">
                 {compression.groups.length > 0 ? (
@@ -502,7 +391,7 @@ export function StatsPage() {
             />
             <StatRow
               label="Resets"
-              value={resetsOn.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+              value={shortDate(resetsOn)}
             />
             {used == null ? (
               <StatRow label="Limit at this pace" value="Run Tinify once" tone="muted" />
@@ -511,7 +400,7 @@ export function StatsPage() {
             ) : limitAtPace ? (
               <StatRow
                 label="Limit at this pace"
-                value={`~${limitAtPace.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`}
+                value={`~${shortDate(limitAtPace)}`}
                 tone="warning"
               />
             ) : (
@@ -687,18 +576,7 @@ export function StatsPage() {
           {summary.recent.length === 0 ? (
             <EmptyHint>Your latest optimizations and cleanups show up here.</EmptyHint>
           ) : (
-            <>
-              <div className={cn(RUNS_GRID, TABLE_HEAD)}>
-                <div>Time</div>
-                <div>Tool</div>
-                <div>File</div>
-                <div className="text-right">Before → after</div>
-                <div className="text-right">Δ</div>
-              </div>
-              {summary.recent.map((run, index) => (
-                <RecentRunRow key={`${run.at}|${index}`} run={run} now={now} />
-              ))}
-            </>
+            <RecentRunsTable runs={summary.recent} now={now} />
           )}
         </Panel>
       </div>
